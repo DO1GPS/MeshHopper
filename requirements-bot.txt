@@ -1,0 +1,8 @@
+# Development import dependencies, not an approved radio deployment.
+# This is not a complete cross-platform dependency lock.
+meshcore==2.3.14
+bleak==3.0.2
+pycryptodome==3.23.0
+pycayennelpp==2.4.0
+pyserial-asyncio-fast==0.16
+pyserial==3.5

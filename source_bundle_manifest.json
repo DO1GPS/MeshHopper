@@ -1,0 +1,117 @@
+{
+  "project": "MeshHopper",
+  "publication_status": "licensed_development_draft",
+  "license": "MIT",
+  "files": [
+    {
+      "path": ".gitignore",
+      "sha256": "99c1f8c8ad37af0fc5aaf4a790b911608ffefcc61cf8d9436a0e1bb120ac5d52",
+      "bytes": 207
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "ee40f15782ff8cf4678567caf7e9bd363e3b522e687186f473e906691c58056b",
+      "bytes": 1063
+    },
+    {
+      "path": "README.md",
+      "sha256": "8efd9467f8df59090b7cf27050b38a916bae2a9656a43095e80e64a79988e77a",
+      "bytes": 8229
+    },
+    {
+      "path": "THIRD_PARTY_NOTICES.md",
+      "sha256": "b45cea6707830684e00c2b6ff909c8dbdff95c388813f91d7ac2adb1cc916e80",
+      "bytes": 2460
+    },
+    {
+      "path": "docs/public/DEVELOPMENT.de.md",
+      "sha256": "e48a855177e99d8f6db80b310f8afaeb25a64b878c58e90e1410b1b2fb2550a6",
+      "bytes": 8585
+    },
+    {
+      "path": "examples/inspect_meshhopper_commands.py",
+      "sha256": "41bbf65b8699ca08b65593407dffa827e35764137993724b542f4cde19855bdf",
+      "bytes": 721
+    },
+    {
+      "path": "requirements-bot.txt",
+      "sha256": "411a2b93001d5fa1572b82f7c4d98a30cbdac37b5c487d0c80123533872a7ae8",
+      "bytes": 239
+    },
+    {
+      "path": "requirements-test.txt",
+      "sha256": "bcf331ba8f45e5d67cfa99c0b8c92356e349e24f8da647cb8ba33c187493150f",
+      "bytes": 86
+    },
+    {
+      "path": "services/bot/bot_commands.py",
+      "sha256": "fc9e8def26ae551d16c7498d91f8ef24c3406d4375f589ee3fa20a1a9f600b62",
+      "bytes": 1509
+    },
+    {
+      "path": "services/bot/bot_identity.py",
+      "sha256": "53794242245aa087ea1a5de1dfa94e610f27e96181bde7b1c49c7d5a9247ef4b",
+      "bytes": 561
+    },
+    {
+      "path": "services/bot/bot_report.py",
+      "sha256": "cbf95549f1c719d1b37a41ffbabf4ce29fe9cac1406c4ac38ffd08db196d8091",
+      "bytes": 5610
+    },
+    {
+      "path": "services/bot/group_sender.py",
+      "sha256": "55a02563dbbdd0ad6d0f0bf543dcb37d0386b31fa95f55a548358a4d146df26f",
+      "bytes": 2897
+    },
+    {
+      "path": "services/bot/meshcore_room_bot.py",
+      "sha256": "9d96b2f6dec5ed75cc031e8ca273d97313bf3f5e8e9614371fa2f0cb5b24ee5e",
+      "bytes": 31043
+    },
+    {
+      "path": "services/bot/raw_reply_history.py",
+      "sha256": "99a62f08f360adab4a43136a3ffde11b43f8436502aa02f5a4251c9550d1f6d8",
+      "bytes": 11034
+    },
+    {
+      "path": "services/bot/reception_evidence.py",
+      "sha256": "ee87b9c958a4f3f26e8831f3c030f6915d9cc1454e0198d13bef95f71ffdcb40",
+      "bytes": 10617
+    },
+    {
+      "path": "services/bot/report_engine.py",
+      "sha256": "c4e6a9b50f466e8e325e38a77af9d53acc82a9516c93a6d86ad74fd1aaa53929",
+      "bytes": 6572
+    },
+    {
+      "path": "services/bot/report_profile.py",
+      "sha256": "20303fa155fbb3afc8a276a7f3b2750c092afdcd5eec438c43797026b0ee766e",
+      "bytes": 2943
+    },
+    {
+      "path": "services/meshcore_inbox_fetch.py",
+      "sha256": "0bdba470df3577f10c83f12c894d6b50c523c0f0760c21d7047427fcb9ce583f",
+      "bytes": 2160
+    },
+    {
+      "path": "services/meshcore_process_lock.py",
+      "sha256": "aaff2d47e82c0c4ff92deb37757a7340b2ae85aeb65cb54530e30560135ab97f",
+      "bytes": 2100
+    },
+    {
+      "path": "tests/test_bot_public_core.py",
+      "sha256": "a482fce2b8d52fce152238960704ee1d35d85f024654a54c0a4eb1c5dd15e1af",
+      "bytes": 11992
+    },
+    {
+      "path": "tests/test_public_docs.py",
+      "sha256": "b8f287ebbf828489c3fa31e1f79de9b93edafd5bcd6cb3b53274864565565743",
+      "bytes": 4556
+    },
+    {
+      "path": "tests/test_public_profile.py",
+      "sha256": "7a04e538e8dca736765615d864105a6f9e92b3efb0a340bb3d1943274b57b57d",
+      "bytes": 10503
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+# Local state must never enter the public repository.
+.venv/
+.local/
+.deps/
+__pycache__/
+*.py[cod]
+*.sqlite*
+*.db
+*.db-*
+*.log
+*.pid
+*.lock
+.env
+.env.*
+services/bot/runtime/
+logs/
+captures/
+operator-config/
