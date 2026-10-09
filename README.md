@@ -16,7 +16,7 @@ Das Projekt enthält Quellcode, Beispiele und Tests für Interessierte und
 Funkamateure, die den Empfangsbericht nachvollziehen oder den Bot selbst
 weiterentwickeln möchten.
 
-Projektautor: DO1GPS. GitHub-Konto: DO1GPS.
+Projektautor und GitHub-Konto: DO1GPS.
 
 ## Was in dieser Fassung steckt
 
@@ -38,8 +38,8 @@ Einrichtungsweg.
 Die vorhandenen Geräte- und Übernahmeprüfungen bleiben erhalten.
 
 Diese Entwicklungsfassung steht unter der [MIT-Lizenz](LICENSE).
-Sie ist keine offizielle MeshCore-Software. Der Quellcode ist öffentlich
-auf GitHub unter https://github.com/DO1GPS/MeshHopper verfügbar.
+Sie ist keine offizielle MeshCore-Software. Die öffentliche Entwicklungsfassung
+wird unter `DO1GPS/MeshHopper` geführt.
 
 Eine Sperre der gemeinsamen Chatdatenbank konnte gültige Anfragen vor dem
 Senden abbrechen. Der Bot speichert Antwortversuche deshalb jetzt getrennt
@@ -66,13 +66,24 @@ nachzuweisen. Der öffentliche Stand bleibt eine Entwicklungsfassung.
 | `ping test`, `test ping` | `TEST` |
 | `room` | `ROOM` |
 | `ping 123` | `PONG`; die Zahl kennzeichnet die Anfrage |
+| `#ping`, `#test`, `#room` | Wie der entsprechende Befehl ohne `#` |
+| `danke`, `thanks`, `danke 73` | `🤖 Gern geschehen ✌🏻, 73` |
 
 Die Erkennung unterscheidet nicht zwischen Groß- und Kleinschreibung.
+Ein einzelnes `#` darf direkt vor dem ersten Befehlswort stehen, auch bei
+`#reping`, `#retest` und `#ping test`. `##ping`, `# ping` und `ping #test`
+sind keine gültigen Befehle. Sätze wie „Ping von 55566“ bleiben ebenfalls
+ohne automatische Antwort.
 Die Zahl darf ein bis sechs Ziffern
 `0–9` haben und muss mit einem Leerzeichen oder Tab getrennt sein.
 Sie kennzeichnet keine Anzahl von Wiederholungen. Nur vollständige
 Befehlsformen lösen eine Antwort aus; Gesprächssätze wie „bitte ping mich“
 und fremde `PONG`-Antworten bleiben ohne Reaktion.
+
+Die Dankantwort hat eigene, vollständige Befehlsformen: `danke`, `thanks`
+und jeweils der Zusatz `73`; auch `@MeshHopper danke` ist möglich.
+`#danke` und längere Gesprächssätze lösen sie nicht aus. Bekannte
+Bot-Absender lösen mit einem Danktext keine weitere Dankantwort aus.
 
 `reping` und `retest` sind alternative Schreibweisen. Befehle sind nicht
 beliebig kombinierbar: `ping test` ergibt eine `TEST`-Antwort, während
@@ -96,12 +107,16 @@ Beispiel mit erfundenen Stationsbezeichnungen:
 
 ```text
 PONG @Mobile
-RX 2 🐇 | SNR +11.5 dB
-Weg: Nord>Mitte
-TX de-he | Rückweg offen
+TX: de-he
+RX: 2 🐇 | SNR +11.5 dB
+Weg: Nord→Mitte
+QTH: nicht gesetzt
 ```
 
-`RX` bedeutet Empfang am Monitor. `2 🐇` sind zwei Hops
+`TX:` nennt den verwendeten Scope (eingestellten Weiterleitungsbereich),
+hier `de-he`. Das Wort `he` im Anfragewortlaut ändert diesen Bereich nicht.
+
+`RX:` bedeutet Empfang am Monitor. `2 🐇` sind zwei Hops
 (Weiterleitungsschritte), nicht zwingend zwei verschiedene Repeater.
 `SNR` ist der Signal-Rausch-Abstand dieses Empfangs. Er beschreibt nicht
 die Qualität aller Zwischenstationen. Der kurze Text enthält keine RSSI
@@ -111,17 +126,25 @@ die Qualität aller Zwischenstationen. Der kurze Text enthält keine RSSI
 Kann eine kurze Repeaterkennung nicht eindeutig einem Kontakt zugeordnet
 werden, bleibt etwa `b5?` stehen. Das Fragezeichen bedeutet, dass der Name
 nicht eindeutig aufgelöst ist. `...` kennzeichnet ausgelassene
-Zwischenstationen in einem gekürzten Bericht.
+Zwischenstationen in einem gekürzten Bericht. `→` trennt die Stationen;
+`letzter` bezeichnet ausdrücklich nur den letzten erfassten Hop.
 
-`TX de-he` nennt den verwendeten Scope (eingestellten Flood-Bereich).
-„Rückweg offen“ bedeutet: Der Empfang beim ursprünglichen Absender ist
-nicht bestätigt. Auch ein lokales OK oder der Empfang einer eigenen
-Funkkopie beweist keine Zustellung dort.
+`QTH:` bezeichnet den Standort des Monitors, nicht den Standort des
+Anfragenden. Die öffentliche Fassung hat keinen voreingestellten
+Betreiberstandort. `MESHCORE_MONITOR_QTH` setzt ihn lokal; ohne Angabe
+steht `nicht gesetzt`. Das Bytebudget gilt auch für diese Zeile.
+
+Der Antworttext behauptet keinen bestätigten Rückweg. Ein lokales OK oder
+der Empfang einer eigenen Funkkopie beweist keine Zustellung beim Absender.
 
 Die Zuordnung zur Anfrage bleibt intern; der Antworttext enthält keine
 zusätzliche technische Zuordnungsnummer. Fehlen passende Empfangsdaten,
-steht „RX unbekannt“; bei mehreren passenden Kopien „RX mehrdeutig“.
-Nicht belegte Wege oder Messwerte werden nicht ergänzt.
+steht `RX: unbekannt` und `Weg: nicht erfasst`. Bei mehreren gültigen
+Empfangskopien verwendet der Bericht die erste vollständig geprüfte Kopie:
+Hops, SNR und Weg stammen zusammen aus diesem Empfang. Die interne
+Mehrdeutigkeit bleibt erhalten; der Text behauptet weder einen einzigen
+Funkweg noch eine Übersicht aller Kopien. Nicht belegte Werte werden nicht
+ergänzt.
 
 ## Quellcode und Erweiterungen
 
@@ -140,7 +163,7 @@ Die wichtigsten Bereiche sind getrennt:
   Verbindung und entscheidet, ob ein einmaliger Sendeversuch zulässig ist.
 
 Der Anzeigename des Bots ist keine neue kryptografische Funkidentität.
-Der öffentliche Botkern verwendet den neutralen Anzeigenamen `MeshHopper`.
+Der öffentliche Botkern verwendet den neutralen Anzeigenamen `🐇 MeshHopper`.
 Eigene Anzeigenamen lassen sich in `services/bot/bot_identity.py` festlegen;
 das Textbudget wird dabei aus der Länge des Namens berechnet.
 Der persönliche Name des angeschlossenen Geräts wird durch diesen

@@ -88,6 +88,13 @@ Die vorhandenen Befehlsfamilien teilen sich die Empfangsauswertung:
 `TEST`-Antwort. Die Wörter sind nicht beliebig austauschbar oder kombinierbar;
 `PONG` ist eine Antwort und kein auslösender Befehl.
 
+Ein einzelnes `#` darf direkt vor dem ersten Befehlswort stehen, etwa
+`#test` oder `#ping test`. `##test` und `# test` sind keine Befehle.
+`danke`, `thanks` und jeweils der Zusatz `73` erzeugen
+`🤖 Gern geschehen ✌🏻, 73`; `@MeshHopper danke` wird ebenfalls erkannt.
+Diese Dankformen verwenden keinen Hashtag. Bekannte Bot-Absender lösen
+keine Dankantwort auf ihre eigenen Danktexte aus.
+
 Für eine Textänderung ist `bot_report.py` der Einstieg. Der Test
 `test_ping_test_room_real_packet_roundtrip_hare_snr_no_rssi_or_hex_line`
 zeigt das vollständige erwartete Format und kontrolliert auch das tatsächlich
@@ -97,14 +104,44 @@ Größenprüfungen bleiben erhalten.
 Ein Emoji braucht mehrere UTF-8-Bytes. Ein längerer Botname lässt weniger
 Platz für den Weg. RSSI bleibt in den Empfangsdaten; der kurze Antworttext
 zeigt SNR. Ein nicht eindeutig aufgelöster Repeater bleibt etwa `b5?`.
-Ein Kontaktname ist keine bestätigte Funkidentität. Ein fehlender Rückweg
-darf nicht durch einen geschätzten ersetzt werden.
+Ein Kontaktname ist keine bestätigte Funkidentität. Der Bericht beschreibt
+den Empfang am Monitor, keinen bestätigten Rückweg. Bei mehreren passenden
+Empfangskopien stammen Hops, SNR und Weg zusammen aus der ersten vollständig
+geprüften Kopie. Die interne Mehrdeutigkeit wird dadurch nicht aufgehoben.
 
-Der öffentliche Botkern verwendet den neutralen Anzeigenamen `MeshHopper`.
+Der öffentliche Botkern verwendet den neutralen Anzeigenamen `🐇 MeshHopper`.
 Eigene Anzeigenamen werden in `services/bot/bot_identity.py` festgelegt.
 Danach die Pakettests erneut ausführen: Die Namenslänge beeinflusst das
 verbleibende Textbudget. Der Autorenhinweis DO1GPS steht davon getrennt in
 README, Lizenz und Quellenhinweisen.
+
+Das Antwortformat hält die Angaben in fünf Zeilen auseinander:
+
+```text
+PONG @Mobile
+TX: de-he
+RX: 2 🐇 | SNR +11.5 dB
+Weg: Nord→Mitte
+QTH: nicht gesetzt
+```
+
+`QTH` ist der Standort des Monitors, nicht GPS des Anfragenden.
+`MESHCORE_MONITOR_QTH` setzt ihn lokal; es gibt keinen Betreiberstandort
+als Vorgabe. Beispiel mit erfundenem Standort unter PowerShell:
+
+```powershell
+$env:MESHCORE_MONITOR_QTH = "Teststation"
+```
+
+Unter Linux oder macOS:
+
+```shell
+export MESHCORE_MONITOR_QTH="Teststation"
+```
+
+Auch diese Angabe zählt zum Bytebudget. Zu lange Texte werden nicht durch
+ein größeres Paketlimit ermöglicht. Nach eigenen Änderungen deshalb den
+vollständigen Pakettest laufen lassen.
 
 ## Betriebsprofil und bekannte Einschränkungen
 
@@ -160,6 +197,10 @@ Für das beschriebene Format ist `raw_qsl` notwendig. Kanalindizes,
 alleiniger Nachrichtenabholer und Datensicherung müssen separat zu der
 Installation passen. Ein Aufruf ohne `--live` verhindert Botantworten,
 kann aber Geräteabfragen ausführen; er ist kein Offline-Test.
+
+Der Quellcode hat als Standard die Kanalindizes `2, 5, 7`. Das sind
+Slotnummern, keine weltweit festgelegten Kanalnamen. Vor eigenem Funkbetrieb
+die freigegebenen Indizes über `--channels` ausdrücklich auswählen.
 
 Im bestehenden Home-Assistant-Betrieb startet die App Gerätebrücke,
 Nachrichtenverteiler, Bot und Dashboard-Server. Der Server holt Nachrichten

@@ -27,6 +27,7 @@ import re
 import struct
 import sys
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(os.environ.get("MESHCORE_PUBLIC_ROOT", Path(__file__).resolve().parents[1])).resolve()
 BOT_SOURCE = ROOT / "services" / "bot"
@@ -90,7 +91,9 @@ class PublicCoreTests(unittest.TestCase):
         self.assertTrue(reply.body.startswith(head + " @Demo\n"))
         self.assertNotIn("RSSI", reply.body)
         self.assertIsNone(re.search(r"#[0-9a-fA-F]{16}", reply.body))
-        self.assertIn("TX lab | Rückweg offen", reply.body)
+        self.assertIn("\nTX: lab\n", reply.body)
+        self.assertTrue(reply.body.endswith("\nQTH: nicht gesetzt"))
+        self.assertNotIn("Rückweg offen", reply.body)
         self.assertLessEqual(len(reply.body.encode("utf-8")), bot_identity.BOT_BODY_BUDGET)
         self.assertLessEqual(len((reply.sender_alias + ": " + reply.body).encode("utf-8")), 155)
         self.assertLessEqual(len(reply.packet) + 2, 176)
@@ -98,6 +101,8 @@ class PublicCoreTests(unittest.TestCase):
         self.assertEqual(timestamp, RESPONSE_TIME)
         self.assertEqual(text_type, 0)
         self.assertEqual(text, reply.sender_alias + ": " + reply.body)
+        self.assertIsNone(bot_commands.parse_command(text, wire=True),
+                          "An actual prepared reply must not trigger another response")
 
     def test_all_eleven_source_files_have_only_known_local_or_external_imports(self):
         local_names = {Path(name).stem for name in PUBLIC_FILES}
@@ -126,7 +131,11 @@ class PublicCoreTests(unittest.TestCase):
         cases = {"ping": "ping", "PING": "ping", "reping": "ping",
                  "test": "test", "ReTest": "test", "room": "room",
                  "ROOM": "room", "ping test": "test", "test ping": "test",
-                 "reping retest": "test", "ping 123": "ping", "retest 654321": "test"}
+                 "reping retest": "test", "ping 123": "ping", "retest 654321": "test",
+                 "#ping": "ping", "#reping": "ping", "#test": "test", "#retest": "test",
+                 "#room": "room", "#ping test": "test", "#test ping 12": "test",
+                 "Danke": "thanks", "thanks": "thanks", "danke 73": "thanks",
+                 "@MeshHopper danke": "thanks", "@MeshHopper thanks 73": "thanks"}
         for text, command in cases.items():
             with self.subTest(text=text):
                 self.assertEqual(bot_commands.parse_command(text), command)
@@ -134,7 +143,9 @@ class PublicCoreTests(unittest.TestCase):
 
     def test_sentence_unicode_lookalike_and_embedded_control_do_not_trigger(self):
         for text in ("please ping me", "ping ping", "room test", "ping 1234567",
-                     "PİNG", "ＰＩＮＧ", "ping\n test", "pi\0ng", "Demo: ping", None, 1):
+                     "PİNG", "ＰＩＮＧ", "ping\n test", "pi\0ng", "Demo: ping",
+                     "##ping", "# ping", "ping #test", "Ping von 55566", "ping he",
+                     "danke dafür", "thanks 123", "#danke", None, 1):
             with self.subTest(text=text):
                 self.assertIsNone(bot_commands.parse_command(text))
 
@@ -148,8 +159,9 @@ class PublicCoreTests(unittest.TestCase):
                 reply = engine.build(2, REQUEST_TIME, text, command, RESPONSE_TIME)
                 self.assert_public_body(reply, head)
                 self.assertEqual(reply.sender_alias, bot_identity.BOT_NAME)
-                self.assertEqual(reply.body.splitlines(), [head + " @Demo", "RX 2 🐇 | SNR +11.5 dB",
-                                                          "Weg: North>South", "TX lab | Rückweg offen"])
+                self.assertEqual(reply.body.splitlines(), [head + " @Demo", "TX: lab",
+                                                          "RX: 2 🐇 | SNR +11.5 dB",
+                                                          "Weg: North→South", "QTH: nicht gesetzt"])
                 self.assertEqual(observed.copies[0].rssi_dbm, -100)
                 self.assertEqual(reply.request_identity, report_engine.command_identity(2, REQUEST_TIME, text))
 
@@ -158,7 +170,7 @@ class PublicCoreTests(unittest.TestCase):
         observed = engine.observe(receive_frame(path=(), snr_quarters=0, rssi=0))
         reply = engine.build(2, REQUEST_TIME, "Demo: Ping", "ping", RESPONSE_TIME)
         self.assert_public_body(reply, "PONG")
-        self.assertIn("RX 0 🐇 | SNR +0 dB\nWeg: direkt", reply.body)
+        self.assertIn("RX: 0 🐇 | SNR +0 dB\nWeg: direkt", reply.body)
         self.assertEqual((observed.copies[0].hops, observed.copies[0].snr_db, observed.copies[0].rssi_dbm), (0, 0.0, 0))
 
     def test_evidence_match_requires_channel_timestamp_and_original_text(self):
@@ -171,25 +183,42 @@ class PublicCoreTests(unittest.TestCase):
             with self.subTest(channel=channel, timestamp=timestamp, text=text):
                 self.assertEqual(evidence.match(channel, timestamp, text).status, "unavailable")
 
-    def test_missing_or_multiple_copies_do_not_invent_metrics_or_a_path(self):
-        for copies, status, word in ((0, "unavailable", "unbekannt"), (2, "ambiguous", "mehrdeutig")):
-            with self.subTest(copies=copies):
-                engine = self.engine()
-                for _ in range(copies):
-                    engine.observe(receive_frame())
-                reply = engine.build(2, REQUEST_TIME, "Demo: Ping", "ping", RESPONSE_TIME)
-                self.assert_public_body(reply, "PONG")
-                self.assertEqual(reply.evidence_status, status)
-                self.assertIn("RX " + word, reply.body)
-                for invented in ("🐇", "SNR", "Weg:"):
-                    self.assertNotIn(invented, reply.body)
+    def test_missing_copy_does_not_invent_metrics_or_a_path(self):
+        reply = self.engine().build(2, REQUEST_TIME, "Demo: Ping", "ping", RESPONSE_TIME)
+        self.assert_public_body(reply, "PONG")
+        self.assertEqual(reply.evidence_status, "unavailable")
+        self.assertEqual(reply.body.splitlines(), ["PONG @Demo", "TX: lab", "RX: unbekannt",
+                                                  "Weg: nicht erfasst", "QTH: nicht gesetzt"])
+        self.assertNotIn("🐇", reply.body)
+        self.assertNotIn("SNR", reply.body)
+
+    def test_multiple_exact_copies_report_the_first_whole_copy_without_crossmixing(self):
+        engine = self.engine()
+        first = engine.observe(receive_frame(path=(b"\xa1", b"\xb2"), snr_quarters=46, rssi=-100))
+        engine.observe(receive_frame(path=(b"\xb2",), snr_quarters=-20, rssi=-120))
+        before = dict(engine._pending)
+        with patch.object(report_engine, "response_body", wraps=bot_report.response_body) as formatter:
+            reply = engine.build(2, REQUEST_TIME, "Demo: Ping", "ping", RESPONSE_TIME)
+        matched = formatter.call_args.args[1]
+        self.assertEqual((matched.status, matched.reason), ("ambiguous", "multiple_rx_copies"))
+        self.assertEqual(len(matched.copies), 2)
+        self.assertEqual(matched.copies[0], first.copies[0])
+        self.assert_public_body(reply, "PONG")
+        self.assertEqual(reply.evidence_status, "ambiguous")
+        self.assertEqual(reply.body.splitlines(), ["PONG @Demo", "TX: lab",
+                                                  "RX: 2 🐇 | SNR +11.5 dB",
+                                                  "Weg: North→South", "QTH: nicht gesetzt"])
+        self.assertNotIn("RX: 1 🐇", reply.body)
+        self.assertNotIn("SNR -5 dB", reply.body)
+        # Formatting does not erase either complete input or claim a unique route.
+        self.assertEqual(engine._pending, before)
 
     def test_unknown_and_colliding_prefixes_remain_question_mark_labels(self):
         contacts = {"a1" + "01" * 31: "First", "a1" + "02" * 31: "Other"}
         engine = self.engine(contacts=contacts)
         engine.observe(receive_frame())
         reply = engine.build(2, REQUEST_TIME, "Demo: Ping", "ping", RESPONSE_TIME)
-        self.assertIn("Weg: a1?>b2?", reply.body)
+        self.assertIn("Weg: a1?→b2?", reply.body)
         self.assertNotIn("First", reply.body)
         self.assertNotIn("Other", reply.body)
 
@@ -210,6 +239,41 @@ class PublicCoreTests(unittest.TestCase):
                     engine.build(channel, REQUEST_TIME, "Demo: ping test", command, RESPONSE_TIME)
         reply = engine.build(2, REQUEST_TIME, "Demo: ping test", "test", RESPONSE_TIME)
         self.assert_public_body(reply, "TEST")
+
+    def test_thanks_packet_has_the_exact_reply_and_does_not_trigger_another_reply(self):
+        for request in ("Danke", "thanks", "danke 73", "@MeshHopper thanks 73"):
+            with self.subTest(request=request):
+                engine = self.engine()
+                text = "Demo: " + request
+                engine.observe(receive_frame(text))
+                reply = engine.build(2, REQUEST_TIME, text, "thanks", RESPONSE_TIME)
+                self.assertEqual(reply.body, "🤖 Gern geschehen ✌🏻, 73")
+                self.assertEqual(reply.sender_alias, "🐇 MeshHopper")
+                self.assertLessEqual(len((reply.sender_alias + ": " + reply.body).encode("utf-8")), 155)
+                timestamp, kind, outgoing = decode_reply(reply.packet)
+                self.assertEqual((timestamp, kind), (RESPONSE_TIME, 0))
+                self.assertEqual(outgoing, reply.sender_alias + ": " + reply.body)
+                self.assertIsNone(bot_commands.parse_command(outgoing, wire=True))
+
+    def test_known_bot_thanks_and_other_reply_bodies_do_not_start_a_loop(self):
+        for alias in bot_identity.KNOWN_BOT_ALIASES:
+            for body in ("danke", "thanks 73", "🤖 Gern geschehen ✌🏻, 73", "PONG @Demo"):
+                with self.subTest(alias=alias, body=body):
+                    self.assertIsNone(bot_commands.parse_command(alias + ": " + body, wire=True))
+        for body in ("PONG @Demo", "TEST @Demo", "ROOM @Demo", "🤖 Gern geschehen ✌🏻, 73"):
+            self.assertIsNone(bot_commands.parse_command(body))
+
+    def test_public_qth_is_local_and_display_controls_cannot_create_extra_lines(self):
+        self.assertEqual(bot_report.MONITOR_QTH, "nicht gesetzt")
+        source = (BOT_SOURCE / "bot_report.py").read_text(encoding="utf-8")
+        self.assertIn('os.environ.get("MESHCORE_MONITOR_QTH", "nicht gesetzt")', source)
+        engine = self.engine()
+        engine.observe(receive_frame())
+        with patch.object(bot_report, "MONITOR_QTH", "Demo\nLoc\u200b | <>"):
+            reply = engine.build(2, REQUEST_TIME, "Demo: Ping", "ping", RESPONSE_TIME)
+        self.assertEqual(len(reply.body.splitlines()), 5)
+        self.assertEqual(reply.body.splitlines()[-1], "QTH: DemoLoc")
+        self.assertNotIn("\u200b", reply.body)
 
     def test_utf8_packet_limits_are_fail_closed(self):
         profile = group_sender.FloodProfile(0, None)

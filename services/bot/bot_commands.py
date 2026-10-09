@@ -1,16 +1,21 @@
 """Complete, ASCII-only command grammar; never changes request identity."""
 import re
 
+from bot_identity import KNOWN_BOT_ALIASES
+
 
 EDGE_PADDING = "\x00 \t\r\n.,!?;:"
 COMMAND = re.compile(
-    r"(ping|reping|test|retest|room)"
+    r"#?(ping|reping|test|retest|room)"
     r"(?:[ \t]+(ping|reping|test|retest))?"
     r"(?:[ \t]+[0-9]{1,6})?",
     re.IGNORECASE | re.ASCII,
 )
 FAMILIES = {"ping": "ping", "reping": "ping", "test": "test",
             "retest": "test", "room": "room"}
+THANKS = re.compile(r"(?:@MeshHopper[ \t]+)?(?:danke|thanks)(?:[ \t]+73)?",
+                    re.IGNORECASE | re.ASCII)
+BOT_SENDERS = frozenset(alias.casefold() for alias in KNOWN_BOT_ALIASES)
 
 
 def _control_inside(text: str) -> bool:
@@ -24,12 +29,20 @@ def parse_command(text: object, *, wire: bool = False) -> str | None:
     Only received group-wire text has an unverified ``sender: `` prefix.
     Locally typed outgoing bodies must never be reinterpreted as that prefix.
     The optional ASCII number is an opaque marker; mixed ping/test is one test.
+    One optional hash belongs directly before the first command token only.
     """
     if not isinstance(text, str):
         return None
+    sender = None
     if wire and ": " in text:
         # Legacy sender metadata is not a new command-body policy.
-        text = text.split(": ", 1)[1]
+        sender, text = text.split(": ", 1)
+    # Thanks has its own exact forms, without the ping/test edge punctuation,
+    # arbitrary numeric markers or self-replies from known bot display names.
+    if THANKS.fullmatch(text.strip(" \t")):
+        if sender is not None and ("\0" in sender or sender.strip().casefold() in BOT_SENDERS):
+            return None  # NUL cannot form a valid original request identity.
+        return "thanks"
     body = text.strip(EDGE_PADDING)
     if _control_inside(body):
         return None

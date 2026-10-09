@@ -13,7 +13,8 @@ def main(arguments=None):
     messages = sys.argv[1:] if arguments is None else arguments
     for text in messages or EXAMPLES:
         command = parse_command(text)
-        result = {"ping": "PONG", "test": "TEST", "room": "ROOM"}.get(command, "keine Antwort")
+        result = {"ping": "PONG", "test": "TEST", "room": "ROOM",
+                  "thanks": "THANKS"}.get(command, "keine Antwort")
         print(f"{text!r} -> {result}")
     return 0
 

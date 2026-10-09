@@ -2,7 +2,7 @@
 
 The bot connects only to the local multi-client relay (default TCP 5102),
 never directly to the single-session BLE bridge (5101).  It replies only to
-bounded channel commands from the shared ping/test/room grammar.
+bounded channel commands from the shared ping/test/room/thanks grammar.
 
 An ``OK`` reply from the local M1 means only that the M1 accepted the command;
 it is not RF delivery proof.  All state changes are logged without message
@@ -51,6 +51,7 @@ from raw_reply_history import reply_record, save_reply_record, reply_history_wri
 from report_engine import command_identity  # noqa: E402
 from bot_identity import BOT_NAME  # noqa: E402
 from bot_commands import parse_command  # noqa: E402
+from bot_report import THANKS_REPLY  # noqa: E402
 
 
 BOT_PREFIX = f"[{BOT_NAME}]"
@@ -58,6 +59,7 @@ COMMAND_REPLIES = {
     "ping": f"{BOT_PREFIX} PONG",
     "test": f"{BOT_PREFIX} TEST OK",
     "room": f"{BOT_PREFIX} ROOM OK",
+    "thanks": f"{BOT_PREFIX} {THANKS_REPLY}",
 }
 DEFAULT_CHANNELS = frozenset({2, 5, 7})
 
@@ -398,6 +400,11 @@ class RoomBot:
         # MeshCore sender timestamp.
         if timestamp < self.session_started_at - 30:
             self.log("ignored_stale_message", channel=channel, command=command)
+            return
+        # Courtesy replies concern the current exchange only. Preserve the
+        # established ping/test/room startup boundary and request identities.
+        if command == "thanks" and not 0 <= time.time() - timestamp <= 60:
+            self.log("ignored_stale_thanks", channel=channel, command=command)
             return
         fingerprint = message_fingerprint(channel, timestamp, text)
         if self.config.live and self.client is None:

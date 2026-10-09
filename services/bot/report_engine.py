@@ -107,7 +107,7 @@ class BotReportEngine:
             return result
         copy = result.copies[0]
         text = copy.text_bytes.decode("utf-8", "strict")
-        if _command(text) not in ("ping", "test", "room"):
+        if _command(text) not in ("ping", "test", "room", "thanks"):
             return EvidenceResult("unavailable", "not_a_command")
         key = _key(copy.channel_index, copy.sender_timestamp, text)
         if self._coverage_lost or key in self._done or key in self._lost:
