@@ -25,6 +25,7 @@ from contextlib import closing, ExitStack, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from types import SimpleNamespace
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -53,9 +54,12 @@ from raw_reply_history import reply_record, save_reply_record, reply_history_wri
 from report_engine import command_identity  # noqa: E402
 from bot_identity import BOT_NAME  # noqa: E402
 from bot_commands import parse_command  # noqa: E402
-from bot_report import THANKS_REPLY, HELP_REPLY  # noqa: E402
+from bot_runtime_status import RuntimeStatusWriter, COMMAND_FAMILIES  # noqa: E402
+from bot_report import PATH_HINT_REPLY, THANKS_REPLY, HELP_REPLY, CLARIFY_REPLY, BOT_REPORT_REPLY  # noqa: E402
+from bot_dialogue import PATH_CONTEXT_REPLY  # noqa: E402
 from reception_evidence import channel_message_metrics  # noqa: E402
 from bot_timing import begin_request, timed_handler, span as timing_span, measured_send_lock, new_epoch  # noqa: E402
+from local_path_dispatch import LocalPathServer, read_accepted_path  # noqa: E402
 
 
 BOT_PREFIX = f"[{BOT_NAME}]"
@@ -63,10 +67,15 @@ COMMAND_REPLIES = {
     "ping": f"{BOT_PREFIX} PONG",
     "test": f"{BOT_PREFIX} TEST OK",
     "room": f"{BOT_PREFIX} ROOM OK",
+    "path_hint": f"{BOT_PREFIX} {PATH_HINT_REPLY}",
     "thanks": f"{BOT_PREFIX} {THANKS_REPLY}",
     "help": f"{BOT_PREFIX} {HELP_REPLY}",
+    "clarify": f"{BOT_PREFIX} {CLARIFY_REPLY}",
+    "bot_report": f"{BOT_PREFIX} {BOT_REPORT_REPLY}",
+    "path_context": f"{BOT_PREFIX} {PATH_CONTEXT_REPLY}",
 }
 DEFAULT_CHANNELS = frozenset({1, 2, 5})
+PATH_CONTEXT_SECONDS = 90.0
 
 
 def exact_command(text: object) -> str | None:
@@ -289,10 +298,52 @@ class RoomBot:
         self.session_started_at = int(time.time())
         self._send_lock = asyncio.Lock()
         self._active_reports = set()
+        self._recent_path_context = {}
         self.client: MeshCore | None = None
         self.report_engine = None
         self._session_token = object()
         self._timing_epoch = new_epoch()
+        self._runtime_status = None
+        try:
+            self._runtime_status = RuntimeStatusWriter(
+                config.log_file.with_name("room-bot-status.json"),
+                channels=config.channels, reply_mode=config.reply_mode,
+                commands=COMMAND_FAMILIES,
+                lock_path=Path(__file__).parent / "runtime" / "room-bot.lock")
+        except Exception:
+            pass  # Status is diagnostic, never a prerequisite for the Bot.
+
+    def runtime_transition(self, lifecycle, *, new_session=False):
+        if new_session:
+            self._recent_path_context.clear()
+        try:
+            writer = getattr(self, "_runtime_status", None)
+            if writer is not None and not writer.transition(lifecycle, new_session=new_session):
+                self.log("runtime_status_unavailable", lifecycle=lifecycle)
+        except Exception:
+            pass  # A failed status write/log must not affect admission or RF.
+
+    def _path_context_available(self, channel, sender_timestamp=None):
+        value = self._recent_path_context.get(channel)
+        if (not isinstance(value, tuple) or len(value) != 3
+                or value[0] is not self._session_token
+                or type(value[1]) not in (int, float) or type(value[2]) is not int
+                or value[1] < time.monotonic()):
+            self._recent_path_context.pop(channel, None)
+            return False
+        # Inbox delivery can lag behind the sender timestamp. An older Pong
+        # must not become a reply merely because a later RX-Weg opened the
+        # short context window. Preserve the context for a genuine follow-up.
+        if sender_timestamp is not None and (
+                type(sender_timestamp) is not int or sender_timestamp < value[2]):
+            return False
+        return True
+
+    def _consume_path_context(self, channel, sender_timestamp):
+        if not self._path_context_available(channel, sender_timestamp):
+            return False
+        self._recent_path_context.pop(channel, None)
+        return True
 
     def observe_raw_reception(self, event: Any) -> None:
         # Synchronous callback: do not enqueue RX decoding behind the channel
@@ -500,6 +551,14 @@ class RoomBot:
                              part_index=reply.part_index, part_total=reply.part_total)
                     if status != "accepted":
                         return  # Never send or replay the rest after an uncertain outcome.
+                if (session_token is self._session_token and client is self.client
+                        and engine is self.report_engine):
+                    self._recent_path_context[channel] = (
+                        session_token, time.monotonic() + PATH_CONTEXT_SECONDS,
+                        last_second)
+                    self.log("path_context_opened", channel=channel,
+                             window_seconds=int(PATH_CONTEXT_SECONDS),
+                             reply_timestamp=last_second)
         except (OSError, sqlite3.Error, ValueError, UnicodeError) as exc:
             self.log("report_preparation_or_history_failed", channel=channel,
                      command="path", fingerprint=fingerprint, error_type=type(exc).__name__,
@@ -531,8 +590,26 @@ class RoomBot:
         payload = event.payload if isinstance(getattr(event, "payload", None), dict) else {}
         self.log("contact_message_observed", fingerprint=self._event_fingerprint(payload))
 
+    async def handle_local_path(self, identity, outbox_path, *, session_token=None):
+        """Accepted local TX is a request only, never the requested RX path."""
+        if (session_token is not self._session_token or self.client is None
+                or self.report_engine is None or self.config.reply_mode != "raw_qsl"):
+            self.log("local_path_skipped_session_unavailable")
+            return
+        request=read_accepted_path(outbox_path,identity,self.config.channels)
+        info=getattr(self.client,"self_info",None)
+        name=info.get("name") if isinstance(info,dict) else None
+        if (not isinstance(name,str) or not name or len(name.encode("utf-8"))>31
+                or any(ord(c)<32 or ord(c)==127 for c in name) or ": " in name):
+            self.log("local_path_skipped_sender_unavailable")
+            return
+        # The same exact own wire identity deduplicates any later RF return.
+        event=SimpleNamespace(payload={"channel_idx":request.channel,
+            "sender_timestamp":request.timestamp,"text":name+": "+request.text})
+        await self.handle_channel_message(event,session_token=session_token,local_origin=True)
+
     @timed_handler
-    async def handle_channel_message(self, event: Any, *, session_token=None) -> None:
+    async def handle_channel_message(self, event: Any, *, session_token=None, local_origin=False) -> None:
         if session_token is not None and session_token is not self._session_token:
             self.log("ignored_old_session_event")
             return
@@ -548,7 +625,7 @@ class RoomBot:
             begin_request(lambda: command_identity(channel, timestamp, text), channel, self._timing_epoch,
                           self.log, clock=getattr(self, "_timing_clock", None))
         self.log(
-            "channel_message_observed",
+            "local_path_message_observed" if local_origin else "channel_message_observed",
             channel=channel,
             command=command or "other",
             fingerprint=self._event_fingerprint(payload),
@@ -577,6 +654,10 @@ class RoomBot:
         if command == "thanks" and not 0 <= time.time() - timestamp <= 60:
             self.log("ignored_stale_thanks", channel=channel, command=command)
             return
+        if command == "path_context" and not self._path_context_available(channel, timestamp):
+            self.log("ignored_path_context_without_recent_path", channel=channel,
+                     command=command)
+            return
         fingerprint = message_fingerprint(channel, timestamp, text)
         if self.config.live and self.client is None:
             self.log("reply_skipped_not_connected", channel=channel, command=command, fingerprint=fingerprint)
@@ -598,6 +679,10 @@ class RoomBot:
                 with timing_span("completion"):
                     self.report_engine.complete(channel, timestamp, text)
             self.log("ignored_duplicate", channel=channel, command=command, fingerprint=fingerprint)
+            return
+        if command == "path_context" and not self._consume_path_context(channel, timestamp):
+            self.log("ignored_consumed_path_context", channel=channel, command=command,
+                     fingerprint=fingerprint)
             return
         if self.config.reply_mode == "raw_qsl" and command in ("ping", "test"):
             self.report_engine.remember_probe(channel, timestamp, text)
@@ -653,6 +738,7 @@ class RoomBot:
         self.log("reply_accepted_by_local_m1", channel=channel, command=command, fingerprint=fingerprint)
 
     async def run_session(self, stop_requested: asyncio.Event) -> str:
+        self.runtime_transition("starting", new_session=True)
         disconnected = asyncio.Event()
         client = MeshCore(
             TCPConnection(self.config.host, self.config.port),
@@ -699,16 +785,22 @@ class RoomBot:
                          coverage_lost=contact_catalog.coverage_lost)
 
         async def on_disconnected(event: Any) -> None:
+            status_owned = self._session_token is session_token and self.client is client
             payload = getattr(event, "payload", {})
             self.log("transport_disconnected", details=payload)
             disconnected.set()
+            if status_owned:
+                self.runtime_transition("disconnected")
 
         def on_raw_disconnected(event: Any) -> None:
+            status_owned = self._session_token is session_token and self.client is client
             if self._session_token is session_token:
                 self._session_token = object()
                 self.report_engine = None
             self.log("transport_disconnected", error_type="SessionEnded")
             disconnected.set()
+            if status_owned:
+                self.runtime_transition("disconnected")
 
         client.subscribe(EventType.CHANNEL_MSG_RECV, on_channel)
         client.subscribe(EventType.CONTACT_MSG_RECV, self.observe_contact_message)
@@ -721,6 +813,7 @@ class RoomBot:
                 client.subscribe(event_type, on_contacts)
         tasks = set()
         fetcher = None
+        local_path_server = None
         try:
             bind_admission(client)
             connected = await connect_admitted(client)
@@ -732,7 +825,24 @@ class RoomBot:
                 if self._session_token is not session_token or self.client is not client:
                     raise ConnectionError("Session ended during profile collection")
                 self.report_engine = engine
-                self.log("report_profile_ready", reply_mode="raw_qsl", scope_policy="stored_default_no_override_write")
+                self.runtime_transition("profile_ready")
+                self.log("report_profile_ready", reply_mode="raw_qsl",
+                         scope_policy="stored_default_no_override_write",
+                         contact_registry_status=getattr(engine,"contact_registry_status","not_configured"),
+                         contact_registry_contacts=getattr(engine,"contact_registry_contacts",0),
+                         contact_registry_error=getattr(engine,"contact_registry_error",None))
+                local_path_socket=os.environ.get("MESHCORE_LOCAL_PATH_SOCKET")
+                local_outbox=os.environ.get("MESHCORE_OUTBOX_STORE")
+                if local_path_socket and local_outbox:
+                    async def local_path_notice(identity):
+                        await self.handle_local_path(identity,Path(local_outbox),session_token=session_token)
+                    local_path_server=LocalPathServer(local_path_socket,local_path_notice,self.log)
+                    try:
+                        await local_path_server.start()
+                    except (OSError,ValueError) as exc:
+                        self.log("local_path_listener_unavailable",error_type=type(exc).__name__)
+                        await local_path_server.close()
+                        local_path_server=None
             if self.config.inbox_owner == "dashboard-api":
                 pass  # one installation-wide GET owner; consume only fanout
             elif self.config.reply_mode == "raw_qsl":
@@ -750,6 +860,7 @@ class RoomBot:
                 reply_mode=self.config.reply_mode,
                 inbox_owner=self.config.inbox_owner,
             )
+            self.runtime_transition("connected")
             stop_task = asyncio.create_task(stop_requested.wait())
             disconnected_task = asyncio.create_task(disconnected.wait())
             tasks = {stop_task, disconnected_task}
@@ -761,6 +872,11 @@ class RoomBot:
                 raise ConnectionError("Inbox reader ended unexpectedly")
             return "stopped" if stop_task in done else "reconnect_exhausted"
         finally:
+            if local_path_server is not None:
+                try:
+                    await local_path_server.close()
+                except Exception as exc:
+                    self.log("cleanup_failed",stage="local_path",error_type=type(exc).__name__)
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
@@ -785,6 +901,7 @@ class RoomBot:
                 self.client = None
                 self.report_engine = None
                 self._session_token = object()
+                self.runtime_transition("disconnected")
 
     async def run_forever(self, stop_requested: asyncio.Event) -> None:
         delay = 1.0
@@ -795,6 +912,7 @@ class RoomBot:
                     break
                 self.log("session_restart", delay_seconds=delay, reason=reason)
             except Exception as exc:
+                self.runtime_transition("disconnected")
                 self.log("session_failure", error_type=type(exc).__name__, error=str(exc), delay_seconds=delay)
             try:
                 await asyncio.wait_for(stop_requested.wait(), timeout=delay)
@@ -802,6 +920,7 @@ class RoomBot:
                 delay = min(delay * 2, 30.0)
             else:
                 break
+        self.runtime_transition("stopped")
         self.log("stopped")
 
 
@@ -827,24 +946,28 @@ async def async_main(live: bool) -> int:
         except NotImplementedError:  # Windows console fallback
             pass
     bot = RoomBot(config, logger)
-    with ExitStack() as ownership:
-        try:
-            # Validate/init and hold ownership before any SDK connection or
-            # command claim. Legacy/non-sending dry runs do not use this store.
-            owner = reply_history_writer(config.history_path) if live and config.reply_mode == "raw_qsl" else nullcontext()
-            ownership.enter_context(owner)
-        except InstanceAlreadyRunningError:
-            bot.log("reply_history_owner_unavailable", error_type="InstanceAlreadyRunningError")
-            return 2
-        except (OSError, sqlite3.Error, ValueError) as exc:
-            bot.log("reply_history_initialization_failed", error_type=type(exc).__name__,
-                    sqlite_errorcode=getattr(exc, "sqlite_errorcode", None),
-                    sqlite_errorname=getattr(exc, "sqlite_errorname", None))
-            return 3
-        try:
-            await bot.run_forever(stop_requested)
-        except KeyboardInterrupt:
-            stop_requested.set()
+    bot.runtime_transition("starting")
+    try:
+        with ExitStack() as ownership:
+            try:
+                # Validate/init and hold ownership before any SDK connection or
+                # command claim. Legacy/non-sending dry runs do not use this store.
+                owner = reply_history_writer(config.history_path) if live and config.reply_mode == "raw_qsl" else nullcontext()
+                ownership.enter_context(owner)
+            except InstanceAlreadyRunningError:
+                bot.log("reply_history_owner_unavailable", error_type="InstanceAlreadyRunningError")
+                return 2
+            except (OSError, sqlite3.Error, ValueError) as exc:
+                bot.log("reply_history_initialization_failed", error_type=type(exc).__name__,
+                        sqlite_errorcode=getattr(exc, "sqlite_errorcode", None),
+                        sqlite_errorname=getattr(exc, "sqlite_errorname", None))
+                return 3
+            try:
+                await bot.run_forever(stop_requested)
+            except KeyboardInterrupt:
+                stop_requested.set()
+    finally:
+        bot.runtime_transition("stopped")
     return 0
 
 
@@ -870,3 +993,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+

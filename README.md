@@ -1,5 +1,7 @@
 # MeshHopper für MeshCore
 
+Aktueller öffentlicher Entwicklungsstand: **Version 3.1**.
+
 MeshHopper ist ein Ping- und Testbot für MeshCore. Er beantwortet
 `ping`- und `test`-Anfragen automatisch mit einem kompakten
 Empfangsbericht. Dieser enthält die Anzahl der Hops (Weiterleitungsschritte),
@@ -11,7 +13,8 @@ Repeater in ihrer Empfangskette erkennbar sind.
 Die normale Antwort bleibt kurz: Der Weg zeigt höchstens die ersten zwei
 und letzten zwei Repeater, bei längeren Namen nur Anfang und Ende.
 `…` kennzeichnet ausgelassene Zwischenstationen. Wer die ganze erfasste
-Kette sehen möchte, sendet `pfad`. Eine kurze Befehlsübersicht gibt es mit
+Kette sehen möchte, sendet `pfad`, `path`, `weg`, `way` oder `route`.
+Eine kurze Befehlsübersicht gibt es mit
 `hilfe`, `help` oder `dir`.
 
 Eine `ping`-Anfrage wird mit `PONG` beantwortet, `test` mit `TEST`.
@@ -63,7 +66,7 @@ in `bot-replies.sqlite3`.
 | `ping 123` | `PONG`; die Zahl kennzeichnet die Anfrage |
 | `#ping`, `#test`, `#room` | Wie der entsprechende Befehl ohne `#` |
 | `danke`, `thanks`, `danke 73` | `🤖 Gern geschehen ✌🏻, 73` |
-| `pfad`, `#pfad` | Vollständiger Empfangspfad des letzten angenommenen Ping/Tests im selben Kanal, bei Bedarf in mehreren Teilen |
+| `pfad`, `path`, `weg`, `way`, `route` (auch mit `#`) | Vollständiger RX-Weg des letzten angenommenen Ping/Tests im selben Kanal, bei Bedarf in mehreren Teilen |
 | `hilfe`, `help`, `dir` | Kurze Befehlsübersicht in einer Nachricht |
 | `#hilfe`, `#help`, `#dir` | Dieselbe Befehlsübersicht |
 
@@ -150,9 +153,10 @@ Mehrdeutigkeit bleibt erhalten; der Text behauptet weder einen einzigen
 Funkweg noch eine Übersicht aller Kopien. Nicht belegte Werte werden nicht
 ergänzt.
 
-## Vollständigen Pfad anfordern
+## Vollständigen RX-Weg anfordern
 
-Eine Station sendet `pfad` oder `#pfad` im freigegebenen Kanal. Der Bot
+Eine Station sendet `pfad`, `path`, `weg`, `way`, `route` oder die jeweilige
+Hashtag-Form im freigegebenen Kanal. Der Bot
 gibt den vollständigen erfassten Empfangspfad des zuletzt angenommenen
 Ping/Test im gleichen Kanal aus. Beispiel: Mobile pingt,
 Basis fragt danach `pfad` an — die Antwort nennt Mobile und zeigt deren
@@ -165,10 +169,11 @@ letztes Ziel. Eine PFAD-, ROOM-, Hilfe- oder Dankanfrage ersetzt es nicht.
 Ein eigenes Beispiel mit erfundenen Kennungen:
 
 ```text
-📩 PFAD @Mobile
+📩 RX-Weg @Mobile
 01 → DB0KT [BF12]
 02 → [8456]
 03 → Grünberg-Nord [9900]
+🏠 Ziel → nicht gesetzt
 ```
 
 Jede Position ist nummeriert und steht auf einer eigenen Zeile. In den
@@ -177,15 +182,17 @@ je nach Funkformat 2, 4 oder 6 Hexzeichen. Es werden keine fehlenden Zeichen
 ergänzt. Auch wiederholte Kennungen bleiben als eigene Positionen erhalten.
 Ein Name wird nur bei eindeutiger Zuordnung im vorhandenen Kontaktbestand
 angezeigt; das ist kein kryptografischer Identitätsnachweis.
-PFAD verwendet die vorhandenen vollständigen Namen, nicht die starken
+RX-Weg verwendet die vorhandenen vollständigen Namen, nicht die starken
 Kürzungen der normalen Antwort. Bei mehreren passenden Kontakten wird
 die Zahl der Kandidaten angegeben, kein Name geraten. Ein einzelner
 überlanger Name samt Kopf und Kennung kann die Ausgabe noch verhindern;
 der Bot schneidet dann kein Paket oder Teile einer Kennung ab.
 
 Längere Wege werden auf mehrere Nachrichten verteilt. `· 1/3`, `· 2/3`,
-`· 3/3` im Kopf geben Teilnummer und Gesamtzahl an; bei einer Nachricht
-entfällt dieser Zusatz. Die Positionsnummerierung läuft weiter.
+`· 3/3` im Kopf geben Teilnummer und Gesamtzahl an. Bei genau einer Nachricht
+entfällt der Zusatz vollständig; es gibt kein `1/1`.
+Die Positionsnummerierung läuft weiter. Das konfigurierte lokale Ziel steht
+als eigener Endpunkt unter der erfassten Repeaterfolge.
 Der Bot hält das UTF-8-Bytebudget (Grenze des codierten Textes) pro Nachricht
 ein. Nach einem fehlgeschlagenen oder unklaren Sendeversuch wird die Reihe
 angehalten, nicht automatisch wiederholt. Fehlende Teile sind kein Beweis,
@@ -199,6 +206,18 @@ Bei Direkt-Empfang steht `direkt`, ohne erfundene Zwischenstationen.
 Nach einer neuen Geräteverbindung wird kein Ziel aus der alten Sitzung
 übernommen. Ein späterer Ping ändert eine bereits vorbereitete PFAD-Serie
 nicht. Rohdaten, die erst danach eintreffen, helfen erst der nächsten Anfrage.
+
+Direkt nach einer vollständig angenommenen RX-Weg-Serie kann eine Station den
+Bot mit `pong from <Ort oder Station>` ansprechen. Nur derselbe Kanal und
+dieselbe Verbindungssitzung zählen; das Zeitfenster beträgt 90 Sekunden und
+wird genau einmal verbraucht. Die kurze Antwort lautet:
+
+```text
+Ich bin ein Bot und habe nur eine Wegabfrage beantwortet. Eine Antwort ist nicht nötig.
+```
+
+Ältere, unadressierte oder wiederholte Texte bleiben still. Die Erkennung der
+Textform ist kein Identitätsnachweis für den Absender.
 
 ## Kanäle mit ROOM abfragen
 
@@ -244,6 +263,8 @@ Die Anleitung für eigene Änderungen steht in
 Die wichtigsten Bereiche sind getrennt:
 
 - [bot_commands.py](services/bot/bot_commands.py) erkennt Befehle.
+- [bot_dialogue.py](services/bot/bot_dialogue.py) enthält kurze, terminale
+  Dialogantworten, die keine weitere Bot-Schleife auslösen sollen.
 - [reception_evidence.py](services/bot/reception_evidence.py) prüft eine
   Empfangskopie und ihre Messwerte.
 - [bot_report.py](services/bot/bot_report.py) macht daraus einen kurzen Text.
@@ -254,6 +275,12 @@ Die wichtigsten Bereiche sind getrennt:
   laufend empfangene Kontaktdaten ohne zusätzliche Geräteabfragen.
 - [bot_timing.py](services/bot/bot_timing.py) misst begrenzte lokale
   Verarbeitungsschritte, nicht die Funkzustellung oder reine Bluetooth-Zeit.
+- [path_inference.py](services/bot/path_inference.py) bewertet optionale
+  Ortskontexte, ohne mehrdeutige Kennungen als sicher auszugeben.
+- [bot_runtime_status.py](services/bot/bot_runtime_status.py) schreibt einen
+  begrenzten lokalen Laufzeitstatus ohne Nachrichtentexte.
+- [local_path_dispatch.py](services/bot/local_path_dispatch.py) übernimmt
+  intern ausgelöste Weganfragen über einen lokalen, begrenzten Kanal.
 - [meshcore_room_bot.py](services/bot/meshcore_room_bot.py) hält die
   Verbindung und entscheidet, ob ein einmaliger Sendeversuch zulässig ist.
 

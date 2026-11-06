@@ -1,4 +1,4 @@
-"""Read-only raw-QSL prerequisite queries with a locally configured device name.
+"""Version 3.1 public raw-QSL gate with a locally configured device name.
 
 The public draft requires MESHCORE_COMPANION_NAME. No operator identity is
 embedded and the configured display name must match exactly before queries.

@@ -149,7 +149,8 @@ class BotReportEngine:
             return result
         copy = result.copies[0]
         text = copy.text_bytes.decode("utf-8", "strict")
-        if _command(text) not in ("ping", "test", "room", "thanks", "path", "help"):
+        if _command(text) not in ("ping", "test", "room", "thanks", "path", "help", "clarify",
+                                  "bot_report", "path_context"):
             return EvidenceResult("unavailable", "not_a_command")
         key = _key(copy.channel_index, copy.sender_timestamp, text)
         latest = self._last_probes.get(copy.channel_index)
@@ -191,14 +192,14 @@ class BotReportEngine:
             evidence = EvidenceResult("available", "exact_local_rx_copy", copies)
         identity = key.hex()
         sender = original_text.partition(": ")[0]
-        contacts = (self._contacts if self._contact_catalog is None else
-                    self._contact_catalog.snapshot())
+        contacts, route_context = ((self._contacts, None) if self._contact_catalog is None else
+                                   self._contact_catalog.report_snapshot())
         body = (room_response_body(channel, self._channel_names, BOT_BODY_BUDGET)
                 if command == "room" and self._channel_names is not None else
                 response_body(command, evidence, contacts, self._scope_name,
                               budget=BOT_BODY_BUDGET,
                               original_sender=sender, request_tag=identity[:16],
-                              inbox_metrics=inbox_metrics))
+                              inbox_metrics=inbox_metrics, route_context=route_context))
         alias = BOT_NAME
         packet = group_packet(self._channels[channel], alias, body, response_timestamp, self._profile)
         metrics_source = ("raw_copy" if evidence.status in {"available", "ambiguous"} else
@@ -224,10 +225,11 @@ class BotReportEngine:
             evidence = EvidenceResult("unavailable", "no_complete_exact_reception")
         else:
             evidence = latest[2] if latest is not None else EvidenceResult("unavailable", "no_channel_probe")
-        contacts = (self._contacts if self._contact_catalog is None else
-                    self._contact_catalog.snapshot())
+        contacts, route_context = ((self._contacts, None) if self._contact_catalog is None else
+                                   self._contact_catalog.report_snapshot())
         bodies = (path_response_bodies(evidence, contacts, max_bytes=BOT_BODY_BUDGET,
-                                      original_sender=latest[1] if latest is not None else None)
+                                      original_sender=latest[1] if latest is not None else None,
+                                      route_context=route_context)
                   if latest is not None else ("📩 Noch kein Ping/Test in diesem Kanal",))
         return tuple(PreparedReply(channel, response_timestamp, BOT_NAME, body,
                     group_packet(self._channels[channel], BOT_NAME, body, response_timestamp, self._profile),

@@ -6,8 +6,9 @@ bleak, pycayennelpp, pycryptodome, pyserial-asyncio-fast. These tests do not
 prove that a real companion/transport, firmware profile or HA install works.
 
 Public source layout, relative to this test's parent directory:
-services/bot/{meshcore_room_bot,bot_identity,bot_commands,bot_report,
-group_sender,reception_evidence,report_engine,report_profile,raw_reply_history}.py
+services/bot/{meshcore_room_bot,bot_identity,bot_commands,bot_dialogue,
+bot_report,bot_runtime_status,group_sender,local_path_dispatch,path_inference,
+reception_evidence,report_engine,report_profile,raw_reply_history}.py
 services/bot/{bot_contact_catalog,bot_timing}.py
 services/{meshcore_inbox_fetch,meshcore_process_lock,meshcore_command_admission}.py
 
@@ -39,6 +40,7 @@ sys.path.insert(0, str(BOT_SOURCE))
 from Crypto.Cipher import AES
 import bot_commands
 import bot_contact_catalog
+import bot_dialogue
 import bot_identity
 import bot_report
 import bot_timing
@@ -48,10 +50,12 @@ import report_engine
 
 PUBLIC_FILES = (
     "services/bot/meshcore_room_bot.py", "services/bot/bot_identity.py",
-    "services/bot/bot_commands.py", "services/bot/bot_report.py",
+    "services/bot/bot_commands.py", "services/bot/bot_dialogue.py",
+    "services/bot/bot_report.py", "services/bot/bot_runtime_status.py",
     "services/bot/group_sender.py", "services/bot/reception_evidence.py",
     "services/bot/report_engine.py", "services/bot/report_profile.py",
-    "services/bot/raw_reply_history.py", "services/meshcore_inbox_fetch.py",
+    "services/bot/raw_reply_history.py", "services/bot/local_path_dispatch.py",
+    "services/bot/path_inference.py", "services/meshcore_inbox_fetch.py",
     "services/meshcore_process_lock.py", "services/bot/bot_contact_catalog.py",
     "services/bot/bot_timing.py", "services/meshcore_command_admission.py",
 )
@@ -143,7 +147,8 @@ class PublicCoreTests(unittest.TestCase):
                  "#room": "room", "#ping test": "test", "#test ping 12": "test",
                  "Danke": "thanks", "thanks": "thanks", "danke 73": "thanks",
                  "@MeshHopper danke": "thanks", "@MeshHopper thanks 73": "thanks",
-                 "pfad": "path", "#PFAD": "path", "hilfe": "help", "help": "help", "dir": "help",
+                 "pfad": "path", "#PFAD": "path", "path": "path", "weg": "path",
+                 "way": "path", "route": "path", "hilfe": "help", "help": "help", "dir": "help",
                  "#hilfe": "help", "#help": "help", "#dir": "help"}
         for text, command in cases.items():
             with self.subTest(text=text):
@@ -256,7 +261,7 @@ class PublicCoreTests(unittest.TestCase):
                 text = "Demo: " + request
                 engine.observe(receive_frame(text))
                 reply = engine.build(2, REQUEST_TIME, text, "thanks", RESPONSE_TIME)
-                self.assertEqual(reply.body, "🤖 Gern geschehen ✌🏻, 73")
+                self.assertIn(reply.body, bot_dialogue.COURTESY_REPLIES)
                 self.assertEqual(reply.sender_alias, "🐇 MeshHopper")
                 self.assertLessEqual(len((reply.sender_alias + ": " + reply.body).encode("utf-8")), 155)
                 timestamp, kind, outgoing = decode_reply(reply.packet)
@@ -266,11 +271,25 @@ class PublicCoreTests(unittest.TestCase):
 
     def test_known_bot_thanks_and_other_reply_bodies_do_not_start_a_loop(self):
         for alias in bot_identity.KNOWN_BOT_ALIASES:
-            for body in ("danke", "thanks 73", "🤖 Gern geschehen ✌🏻, 73", "PONG @Demo"):
+            for body in ("danke", "thanks 73", *bot_dialogue.COURTESY_REPLIES, "PONG @Demo"):
                 with self.subTest(alias=alias, body=body):
                     self.assertIsNone(bot_commands.parse_command(alias + ": " + body, wire=True))
-        for body in ("PONG @Demo", "TEST @Demo", "ROOM @Demo", "🤖 Gern geschehen ✌🏻, 73"):
+        for body in ("PONG @Demo", "TEST @Demo", "ROOM @Demo", *bot_dialogue.COURTESY_REPLIES):
             self.assertIsNone(bot_commands.parse_command(body))
+
+    def test_addressed_pong_from_is_bounded_and_terminal(self):
+        text = "@MeshHopper pong from Demo Station"
+        self.assertEqual(bot_commands.parse_command(text), "path_context")
+        self.assertEqual(bot_report.response_body(
+            "path_context", reception_evidence.EvidenceResult("unavailable", "synthetic"), {}, None),
+            bot_dialogue.PATH_CONTEXT_REPLY)
+        self.assertIsNone(bot_commands.parse_command("@MeshHopper " + bot_dialogue.PATH_CONTEXT_REPLY))
+        self.assertLessEqual(len(bot_dialogue.PATH_CONTEXT_REPLY.encode("utf-8")),
+                             bot_identity.BOT_BODY_BUDGET)
+        for invalid in ("pong from Demo Station", "@MeshHopper pong from -",
+                        "@MeshHopper pong from [Demo]", "@Other pong from Demo"):
+            with self.subTest(invalid=invalid):
+                self.assertNotEqual(bot_commands.parse_command(invalid), "path_context")
 
     def test_public_qth_is_local_and_display_controls_cannot_create_extra_lines(self):
         self.assertEqual(bot_report.MONITOR_QTH, "nicht gesetzt")
@@ -325,7 +344,7 @@ class PublicCoreTests(unittest.TestCase):
             self.assertGreater(len(replies), 1)
             lines = []
             for index, reply in enumerate(replies, 1):
-                self.assertEqual(reply.body.splitlines()[0], f"📩 PFAD @Demo · {index}/{len(replies)}")
+                self.assertEqual(reply.body.splitlines()[0], f"📩 RX-Weg @Demo · {index}/{len(replies)}")
                 self.assertEqual((reply.part_index, reply.part_total), (index, len(replies)))
                 self.assertLessEqual(len(reply.body.encode()), bot_identity.BOT_BODY_BUDGET)
                 self.assertLessEqual(len(reply.packet) + 2, 176)
@@ -334,7 +353,8 @@ class PublicCoreTests(unittest.TestCase):
                 self.assertEqual(reply.request_identity,
                                  report_engine.command_identity(2, REQUEST_TIME + 1, text))
                 lines.extend(reply.body.splitlines()[1:])
-            self.assertEqual(lines, [f"{index:02d} → [{hop.hex().upper()}]" for index, hop in enumerate(path, 1)])
+            self.assertEqual(lines, [f"{index:02d} → [{hop.hex().upper()}]" for index, hop in enumerate(path, 1)]
+                             + ["🏠 Ziel → nicht gesetzt"])
             self.assertEqual(len({reply.packet_identity for reply in replies}), len(replies))
 
     def test_pfad_uses_last_admitted_ping_not_the_different_requesters_own_path(self):
@@ -345,7 +365,9 @@ class PublicCoreTests(unittest.TestCase):
         engine.observe(receive_frame("Other: pfad", timestamp=REQUEST_TIME + 1,
                                      path=(b"\xcc",)))
         replies = engine.build_path(2, REQUEST_TIME + 1, "Other: pfad", RESPONSE_TIME)
-        self.assertEqual(replies[0].body, "📩 PFAD @Demo\n01 → [A1]\n02 → [B2]")
+        self.assertEqual(replies[0].body,
+                         "📩 RX-Weg @Demo\n01 → [A1]\n02 → [B2]\n🏠 Ziel → nicht gesetzt")
+        self.assertNotIn("1/1", replies[0].body)
         self.assertEqual(replies[0].evidence_status, "available")
         self.assertEqual(replies[0].request_identity,
                          report_engine.command_identity(2, REQUEST_TIME + 1, "Other: pfad"))
@@ -362,9 +384,9 @@ class PublicCoreTests(unittest.TestCase):
             engine.remember_probe(channel, REQUEST_TIME, text)
             engine.complete(channel, REQUEST_TIME, text)
         self.assertEqual(engine.build_path(2, REQUEST_TIME + 1, "Other: pfad", RESPONSE_TIME)[0].body,
-                         "📩 PFAD @Demo\n01 → [A1]")
+                         "📩 RX-Weg @Demo\n01 → [A1]\n🏠 Ziel → nicht gesetzt")
         self.assertEqual(engine.build_path(5, REQUEST_TIME + 1, "Other: pfad", RESPONSE_TIME)[0].body,
-                         "📩 PFAD @Remote\n01 → [B2]")
+                         "📩 RX-Weg @Remote\n01 → [B2]\n🏠 Ziel → nicht gesetzt")
         fresh = self.engine(contacts={})
         self.assertEqual(fresh.build_path(2, REQUEST_TIME + 1, "Other: pfad", RESPONSE_TIME)[0].body,
                          "📩 Noch kein Ping/Test in diesem Kanal")
@@ -386,7 +408,7 @@ class PublicCoreTests(unittest.TestCase):
         engine.complete(2, REQUEST_TIME + 1, "New: test")
         engine.observe(receive_frame("Other: pfad", path=(b"\xcc",)))
         replies = engine.build_path(2, REQUEST_TIME + 2, "Other: pfad", RESPONSE_TIME)
-        self.assertEqual(replies[0].body, "📩 PFAD @New\nEmpfangspfad nicht erfasst")
+        self.assertEqual(replies[0].body, "📩 RX-Weg @New\nEmpfangspfad nicht erfasst")
         self.assertEqual(replies[0].evidence_status, "unavailable")
 
     def test_pfad_late_exact_raw_updates_completed_probe_but_not_neighbor_events(self):
@@ -400,7 +422,8 @@ class PublicCoreTests(unittest.TestCase):
         self.assertIn("nicht erfasst", missing[0].body)
         engine.observe(receive_frame("Demo: Ping", path=(b"\xa1",)))
         replies = engine.build_path(2, REQUEST_TIME + 2, "Reader: pfad", RESPONSE_TIME)
-        self.assertEqual(replies[0].body, "📩 PFAD @Demo\n01 → [A1]")
+        self.assertEqual(replies[0].body,
+                         "📩 RX-Weg @Demo\n01 → [A1]\n🏠 Ziel → nicht gesetzt")
 
     def test_pfad_first_whole_copy_and_frozen_retime_do_not_mix_later_target(self):
         engine = self.engine(contacts={})
@@ -411,8 +434,9 @@ class PublicCoreTests(unittest.TestCase):
         engine.observe(receive_frame("Demo: Ping", path=(b"\xee\xff",), width=2))
         replies = engine.build_path(2, REQUEST_TIME + 2, "Reader: pfad", RESPONSE_TIME)
         self.assertEqual(replies[0].evidence_status, "ambiguous")
-        self.assertEqual(replies[0].body.splitlines(), ["📩 PFAD @Demo", "01 → [AABB]",
-                                                       "02 → [CCDD]", "03 → [AABB]"])
+        self.assertEqual(replies[0].body.splitlines(), ["📩 RX-Weg @Demo", "01 → [AABB]",
+                                                       "02 → [CCDD]", "03 → [AABB]",
+                                                       "🏠 Ziel → nicht gesetzt"])
         engine.remember_probe(2, REQUEST_TIME - 10, "Later: test")
         newer = engine.build_path(2, REQUEST_TIME + 3, "Reader: #pfad", RESPONSE_TIME)
         self.assertIn("@Later", newer[0].body, "Inbox order, not sender clock, selects last")
@@ -448,7 +472,9 @@ class PublicCoreTests(unittest.TestCase):
         engine.observe(receive_frame(path=(b"\xaa\xbb",), width=2))
         engine.remember_probe(2, REQUEST_TIME, "Demo: Ping")
         replies = engine.build_path(2, REQUEST_TIME + 1, "Other: pfad", RESPONSE_TIME)
-        self.assertEqual(replies[0].body, "📩 PFAD @Demo\n01 → DE-HE-Example-Hill-North [AABB]")
+        self.assertEqual(replies[0].body,
+                         "📩 RX-Weg @Demo\n01 → DE-HE-Example-Hill-North [AABB]\n"
+                         "🏠 Ziel → nicht gesetzt")
 
     def test_passive_catalog_session_revision_and_capacity_preserve_ambiguity(self):
         session = object()

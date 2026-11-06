@@ -1,5 +1,7 @@
 # MeshHopper verstehen und entwickeln
 
+Diese Anleitung gehört zum öffentlichen Entwicklungsstand **Version 3.1**.
+
 Diese Anleitung richtet sich an Interessierte und Funkamateure, die die
 Empfangsauswertung von MeshHopper prüfen oder den Bot erweitern möchten.
 Der Einstieg erfolgt ohne Funkgerät: Beispiele und Tests verwenden
@@ -96,7 +98,8 @@ Ein einzelnes `#` darf direkt vor dem ersten Befehlswort stehen, etwa
 Diese Dankformen verwenden keinen Hashtag. Bekannte Bot-Absender lösen
 keine Dankantwort auf ihre eigenen Danktexte aus.
 
-`pfad` und `#pfad` geben den vollständigen Empfangspfad des zuletzt
+`pfad`, `path`, `weg`, `way`, `route` und ihre Hashtag-Formen geben den
+vollständigen Empfangspfad des zuletzt
 angenommenen Ping/Test im gleichen Kanal aus. Die PFAD-Anfrage
 bestimmt nur, wer die Details anfordert; ihr eigener Empfangsweg wird
 nicht stattdessen ausgegeben.
@@ -168,8 +171,10 @@ bleiben ausführlich und werden für die Textdarstellung bereinigt; die starke
 Kürzung der normalen Antwort gilt hier nicht. Mehrdeutige Kennungen zeigen
 die Anzahl der Kandidaten statt eines geratenen Namens. Wiederholte
 Positionen werden nicht entfernt. Die Ausgabe ist nummeriert, mit einer
-Position pro Zeile direkt unter `📩 PFAD @Station`. Bei mehreren Teilen
-steht zusätzlich `· 1/3` im Kopf; die Positionsnummerierung läuft weiter.
+Position pro Zeile direkt unter `📩 RX-Weg @Station`. Bei mehreren Teilen
+steht zusätzlich `· 1/3` im Kopf; bei einem Teil gibt es kein `1/1`.
+Die Positionsnummerierung läuft weiter. Das lokale Ziel wird getrennt von
+den erfassten Repeaterkennungen als letzter Endpunkt ausgegeben.
 
 Ein einzelner sehr langer Name samt Kopf und Kennung kann das Bytebudget
 überschreiten. Dann bricht die Vorbereitung ab, statt Textbytes oder die
@@ -201,6 +206,16 @@ erst nach deren Vorbereitung eintreffen, helfen erst der nächsten PFAD-Anfrage.
 
 Die Pakettests prüfen alle drei Kennungsbreiten, Reihenfolge, wiederholte
 Positionen, Teilnummern und das Rücklesen der verschlüsselten Pakete.
+
+### Kurze Dialogantwort nach RX-Weg
+
+`bot_dialogue.py` hält die terminalen Antworttexte getrennt von Parser und
+Laufzeit. Eine vollständig an den Bot gerichtete Form `pong from <Ort oder
+Station>` wird nur nach einer vollständig angenommenen RX-Weg-Serie im selben
+Kanal und in derselben Verbindungssitzung zugelassen. Der Kontext läuft nach
+90 Sekunden ab und wird vor dem ersten Sendeversuch genau einmal verbraucht.
+Abgelehnte oder unklare Wegteile öffnen ihn nicht. Die Textform ist keine
+Authentifizierung des fremden Absenders.
 
 ### ROOM, Kontakte und Zeitmessung
 

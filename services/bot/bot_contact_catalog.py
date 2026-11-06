@@ -6,6 +6,7 @@ never NEXT_CONTACT. Key-only adverts add candidates without clearing names.
 The owning SDK session supplies ordered revisions and an opaque session token.
 """
 from types import MappingProxyType
+from path_inference import contact_context
 
 
 def _key(value):
@@ -39,6 +40,7 @@ class BotContactCatalog:
         self._records = {}
         self._staged = {}
         self._snapshot = MappingProxyType({})
+        self._route_context = MappingProxyType({})
         self.revision = 0
         self.coverage_lost = False
 
@@ -53,6 +55,7 @@ class BotContactCatalog:
         if len(payload) > self._capacity:
             self.coverage_lost = True
             self._snapshot = MappingProxyType({})
+            self._route_context = MappingProxyType({})
             self.revision = revision
             return False
         # Validate the entire batch before committing any entry. A malformed
@@ -63,14 +66,16 @@ class BotContactCatalog:
             if entry is None:
                 return False
             staged_entry = self._staged.get(key)
+            geometry = contact_context(item)
             source_revision = (staged_entry[2] if staged_entry is not None
-                and staged_entry[:2] == entry else 0) if staged else revision
-            entries[key] = (*entry, source_revision)
+                and staged_entry[:2] == entry and staged_entry[3] == geometry else 0) if staged else revision
+            entries[key] = (*entry, source_revision, geometry)
         if len(self._records.keys() | entries.keys()) > self._capacity:
             # No eviction that could turn an ambiguous prefix into a unique
             # candidate. Once coverage is lost, names stay unavailable this session.
             self.coverage_lost = True
             self._snapshot = MappingProxyType({})
+            self._route_context = MappingProxyType({})
             self.revision = revision
             return False
         updated = dict(self._records)
@@ -82,6 +87,7 @@ class BotContactCatalog:
         self._records = updated
         if not self.coverage_lost:
             self._snapshot = MappingProxyType({key: entry[0] for key, entry in updated.items()})
+            self._route_context = MappingProxyType({key: entry[3] for key, entry in updated.items()})
         self.revision = revision
         return True
 
@@ -96,12 +102,13 @@ class BotContactCatalog:
         if key not in self._staged and len(self._staged) >= self._capacity:
             self.coverage_lost = True
             self._snapshot = MappingProxyType({})
+            self._route_context = MappingProxyType({})
             self.revision = revision
             return False
         if key not in self._records and not self.observe_key(key,
                 session_token=session_token, revision=revision):
             return False
-        self._staged[key] = (*entry, revision)
+        self._staged[key] = (*entry, revision, contact_context(item))
         self.revision = revision
         return True
 
@@ -126,3 +133,7 @@ class BotContactCatalog:
     def snapshot(self):
         """One immutable version for a whole PING or multi-part PFAD build."""
         return self._snapshot
+
+    def report_snapshot(self):
+        """Same immutable event revision for names and optional geographic context."""
+        return self._snapshot, self._route_context

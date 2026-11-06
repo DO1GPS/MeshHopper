@@ -1,10 +1,14 @@
 """Compact RX report from the first validated copy, never a return-path claim."""
 from collections import Counter
+from dataclasses import replace
 import os
 import re
 import unicodedata
 
 from reception_evidence import EvidenceResult, InboxMetrics, resolve_path
+from bot_dialogue import (CLARIFY_REPLY, BOT_REPORT_REPLY, PATH_HINT_REPLY,
+                          PATH_CONTEXT_REPLY, courtesy_reply)
+from path_inference import infer_path, locator_position
 
 
 # Display conventions, not geography or identity checks. Remove the known
@@ -21,10 +25,14 @@ CALLSIGN = re.compile(r"(?<![A-Z0-9])(?:[A-Z]{1,2}|[0-9][A-Z])[0-9][A-Z]{1,4}(?!
 DIRECTIONS = {"nord": "N", "süd": "S", "sued": "S", "ost": "O", "west": "W",
               **{direction.casefold(): direction for direction in ("N", "S", "O", "W", "NO", "NW", "SO", "SW")}}
 THANKS_REPLY = "🤖 Gern geschehen ✌🏻, 73"
-HELP_REPLY = ("🤖 HILFE\n📡 ping · test\n🏠 room\n📩 pfad → Weg\n"
-              '🙏 danke → 73\n📖 hilfe/help/dir (auch "#")')
+HELP_REPLY = ("🤖 HILFE\n📡 ping/test\n🏠 room\n📩 pfad/weg/path/way/route\n"
+              "🙏 danke/73\n📖 hilfe/help/dir (#)")
 # Locally configured monitor QTH, never the sender's GPS or a private default.
 MONITOR_QTH = os.environ.get("MESHCORE_MONITOR_QTH", "nicht gesetzt")
+try:
+    MONITOR_POSITION = locator_position(MONITOR_QTH.rsplit(" ", 1)[-1])
+except ValueError:
+    MONITOR_POSITION = None
 PATH_ARROW = "→"
 # Text cap for the compact iPhone summary, not a pixel/font guarantee.
 ROUTE_SUMMARY_CHARS = 22
@@ -39,6 +47,11 @@ def _label(value):
 
 
 def _regional_short(label):
+    # Observed country/postcode and Kassel district spellings. These display
+    # conventions do not identify a station or imply regional RF confinement.
+    local = re.fullmatch(r"DE[-._ ]+(?:[0-9]{5}|KS)[-._ ]+(.+)", label, re.ASCII | re.IGNORECASE)
+    if local:
+        return local.group(1)
     match = REGIONAL_NAME.fullmatch(label)
     if not match:
         return label
@@ -50,7 +63,7 @@ def _regional_short(label):
     return area.group(1) if area and any(c.isalpha() for c in area.group(1)) else local
 
 
-def _compact_name(label):
+def _compact_name(label, stem_chars=4):
     """One short place stem and useful site/direction suffixes; callsigns whole."""
     # A callsign can itself occupy the regional area-code position. Check
     # before removing that prefix, so it is never mistaken for disposable text.
@@ -75,7 +88,7 @@ def _compact_name(label):
         attached = re.fullmatch(r"(.+?)([0-9]{1,2})", stem)
         attached_number = (attached.group(2) if attached and
                            all(c.isalpha() for c in attached.group(1)) else None)
-        short = "".join(c for c in stem if c.isalpha())[:4]
+        short = "".join(c for c in stem if c.isalpha())[:stem_chars]
     suffix = attached_number
     for word in tail:
         number = re.fullmatch(r"(?:#|RPT)?([0-9]{1,2})", word, re.I | re.ASCII)
@@ -96,6 +109,42 @@ def _display_key(label):
     # Canonical Unicode equivalence only for collision checks. Never rewrite
     # evidence, request identities or the actual displayed contact strings.
     return unicodedata.normalize("NFC", label).casefold()
+
+
+def _summary_site_names(hops, contacts):
+    """Drop redundant numbered place tags only in the ordinary RX summary.
+
+    The catalogue is a local display snapshot, not proof of global uniqueness.
+    Distinct known site numbers and an unnumbered peer retain their labels.
+    Original contacts, path evidence and the detailed PFAD view stay untouched.
+    """
+    known = {key.lower(): name for key, name in contacts.items()
+             if isinstance(key, str) and len(key) == 64 and isinstance(name, str)
+             and all(c in "0123456789abcdefABCDEF" for c in key)}
+    parsed, families = {}, {}
+    for name in known.values():
+        label = _label(name)
+        local = unicodedata.normalize("NFC", _regional_short(label))
+        if CALLSIGN.search(label):
+            continue
+        match = re.fullmatch(r"(.+?)[-_.\s]+(?:RPT)?([0-9]{1,2})", local, re.I)
+        base = match.group(1) if match else local
+        # Do not rewrite embedded numeric codes, locators or short identifiers.
+        if (sum(c.isalpha() for c in base) < 4 or any(c.isdigit() for c in base)
+                or any(c in base for c in (PATH_ARROW, "…", "≈"))):
+            continue
+        number = int(match.group(2)) if match else None
+        family = _display_key(base)
+        families.setdefault(family, set()).add(number)
+        if match:
+            parsed[name] = (base, family)
+    aliases = {name: base for name, (base, family) in parsed.items()
+               if len(families[family]) == 1}
+    displayed_contacts = {key: aliases.get(name, name) for key, name in known.items()}
+    displayed_hops = [replace(hop, name=aliases[hop.name])
+                      if hop.status in {"resolved", "inferred"} and hop.name in aliases
+                      else hop for hop in hops]
+    return displayed_hops, displayed_contacts
 
 
 def room_response_body(channel: int, channel_names: dict, max_bytes: int = 123) -> str:
@@ -139,7 +188,7 @@ def _path_labels(hops, contacts):
         groups.setdefault(_display_key(_compact_name(name)[0]), []).append(key)
     labels = []
     for hop in hops:
-        if hop.status != "resolved":
+        if hop.status not in {"resolved", "inferred"}:
             labels.append(_short_hash(hop.hash_hex))
             continue
         short, callsign = _compact_name(_label(hop.name))
@@ -154,7 +203,7 @@ def _path_labels(hops, contacts):
                           if sum(key.startswith(hop.hash_hex[:size]) for key in peers) == 1
                           and _display_key(short + "-" + hop.hash_hex[:size].upper()) not in groups), None)
             short = short + "-" + hop.hash_hex[:width].upper() if width else _short_hash(hop.hash_hex)
-        labels.append(short)
+        labels.append(("≈" if hop.status == "inferred" else "") + short)
     return labels
 
 
@@ -197,8 +246,81 @@ def _route_text(labels):
     return next(iter(_route_choices(labels)), "…")
 
 
+def _endpoint_variants(hop, displayed):
+    """Grow a known place stem; retain hypothesis/site/collision markers whole."""
+    if hop.status not in {"resolved", "inferred"}:
+        return [displayed]
+    marker = "≈" if hop.status == "inferred" else ""
+    compact, callsign = _compact_name(_label(hop.name))
+    visible = displayed.removeprefix(marker)
+    if callsign or not compact or not visible.startswith(compact):
+        return [displayed]
+    # Generated hash suffixes belong to the existing collision-safe label.
+    extra = visible[len(compact):]
+    variants = [displayed]
+    for width in range(5, ROUTE_SUMMARY_CHARS + 1):
+        grown, _ = _compact_name(_label(hop.name), width)
+        label = marker + grown + extra
+        if len(displayed) < len(label) <= ROUTE_SUMMARY_CHARS and label not in variants:
+            variants.append(label)
+    return variants
+
+
+def _full_endpoint_label(hop, displayed):
+    """Whole local name for a known endpoint, with its existing evidence marks."""
+    if hop.status not in {"resolved", "inferred"}:
+        return displayed
+    marker = "≈" if hop.status == "inferred" else ""
+    name = _label(hop.name)
+    compact, callsign = _compact_name(name)
+    visible = displayed.removeprefix(marker)
+    if callsign or not compact or not visible.startswith(compact):
+        return displayed
+    # Retain multiword places and original site/direction tokens. The suffix
+    # already added by _path_labels contains only captured collision bytes.
+    full = unicodedata.normalize("NFC", _regional_short(name))
+    # A contact alias must not look like an extra hop or evidence marker.
+    if any(symbol in full for symbol in (PATH_ARROW, "…", "≈")):
+        return displayed
+    return marker + full + visible[len(compact):]
+
+
+def _named_route_choices(hops, labels):
+    """Spend free width on names only when the selected view has two endpoints.
+
+    Four-position and complete short paths retain their existing preference.
+    Try whole endpoint names against the enclosing UTF-8 packet budget first;
+    the short iPhone text cap applies only to the existing fallback variants.
+    Every shorter alternative remains available for the enclosing byte budget.
+    No extra catalogue scan, route inference or radio action.
+    """
+    choices = _route_choices(labels)
+    if len(hops) <= 2:
+        return choices
+    endpoints = " → ".join((labels[0], "…", labels[-1]))
+    full = " → ".join((_full_endpoint_label(hops[0], labels[0]), "…",
+                       _full_endpoint_label(hops[-1], labels[-1])))
+    if endpoints not in choices:
+        return list(dict.fromkeys(choices + [full]))
+    expanded = []
+    for left in _endpoint_variants(hops[0], labels[0]):
+        for right in _endpoint_variants(hops[-1], labels[-1]):
+            text = " → ".join((left, "…", right))
+            if len(text) <= ROUTE_SUMMARY_CHARS:
+                gains = len(left)-len(labels[0]), len(right)-len(labels[-1])
+                # Use the available width, then share it fairly. If one extra
+                # character remains, favour the final incoming station.
+                expanded.append(((sum(gains), min(gains), gains[1]), text))
+    expanded.sort(key=lambda item: item[0], reverse=True)
+    result = []
+    for choice in choices:
+        result.extend([full] + [text for _, text in expanded] if choice == endpoints else [choice])
+    return list(dict.fromkeys(result))
+
+
 def path_response_bodies(evidence: EvidenceResult, contacts: dict,
-                         max_bytes: int = 123, *, original_sender: str | None = None) -> tuple[str, ...]:
+                         max_bytes: int = 123, *, original_sender: str | None = None,
+                         route_context=None) -> tuple[str, ...]:
     """Every captured hop, in order, with whole lines and numbered parts.
 
     Names retain the full sanitized contact label, not the compact PING policy.
@@ -212,24 +334,52 @@ def path_response_bodies(evidence: EvidenceResult, contacts: dict,
     repeated = (evidence.status == "ambiguous" and evidence.reason == "multiple_rx_copies"
                 and len(evidence.copies) >= 2)
     if not (available or repeated):
-        body = ("📩 PFAD @" + _label(original_sender) + "\nEmpfangspfad nicht erfasst"
-                if original_sender is not None else "📩 Empfangspfad nicht erfasst")
+        body = ("📩 RX-Weg @" + _label(original_sender) + "\nEmpfangspfad nicht erfasst"
+                if original_sender is not None else "📩 RX-Weg nicht erfasst")
         if len(body.encode("utf-8")) > max_bytes:
             raise ValueError("Path byte budget exceeded")
         return (body,)
     copy = evidence.copies[0]
     sender = _label(copy.text_bytes.decode("utf-8", "strict").partition(": ")[0])
     hops = resolve_path(copy, contacts)
-    lines = [f"{i:02d} → " + (_label(hop.name) + " " if hop.status == "resolved"
-                              and _label(hop.name) != "?" else "")
-             + f"[{hop.hash_hex.upper()}]"
-             + (f" · {hop.candidates} Kandidaten" if hop.status == "ambiguous" else "")
-             for i, hop in enumerate(hops, 1)] or ["direkt"]
+    hops = infer_path(hops, contacts, route_context, MONITOR_POSITION)
+    lines = []
+    for i, hop in enumerate(hops, 1):
+        raw = f"{i:02d} → [{hop.hash_hex.upper()}]"
+        if hop.status in {"resolved", "inferred"} and _label(hop.name) != "?":
+            label = ("≈" if hop.status == "inferred" else "") + _label(hop.name)
+            line = f"{i:02d} → " + label + f" [{hop.hash_hex.upper()}]"
+            # An extra inferred label must never make an otherwise sendable
+            # full path fail. Keep complete captured bytes and position instead.
+            header = (f"📩 RX-Weg @{sender}"
+                      + (f" · {len(hops)}/{len(hops)}" if len(hops) > 1 else "")
+                      + "\n")
+            if hop.status == "inferred" and len((header + line).encode("utf-8")) > max_bytes:
+                line = raw + f" · {hop.candidates} Kandidaten"
+        else:
+            line = raw + (f" · {hop.candidates} Kandidaten" if hop.status == "ambiguous" else "")
+        lines.append(line)
+    lines = lines or ["direkt"]
+    # The captured path contains relay prefixes only.  Do not relabel its
+    # final (possibly ambiguous) prefix as our receiver; append the configured
+    # local endpoint as a separate, explicit destination instead.  A compact
+    # form keeps the endpoint visible even with a 31-byte sender and a small
+    # caller budget.
+    max_parts = len(lines) + 1
+    widest_header = f"📩 RX-Weg @{sender} · {max_parts}/{max_parts}\n"
+    monitor_qth = _label(MONITOR_QTH)
+    endpoint = next((value for value in (
+        f"🏠 Ziel → {monitor_qth}", f"🏠 {monitor_qth.split(' ', 1)[0]}",
+        f"🏠{monitor_qth.split(' ', 1)[0]}")
+        if len((widest_header + value).encode("utf-8")) <= max_bytes), None)
+    if endpoint is None:
+        raise ValueError("Path byte budget exceeded")
+    lines.append(endpoint)
     # The total is part of the UTF-8 budget. Try complete partitions until
     # their advertised count matches; at most 63 captured hop positions.
     for total in range(1, len(lines) + 1):
         parts, current = [], []
-        header = lambda index: (f"📩 PFAD @{sender}"
+        header = lambda index: (f"📩 RX-Weg @{sender}"
                                 + (f" · {index}/{total}" if total > 1 else "") + "\n")
         for line in lines:
             prefix = header(len(parts) + 1)
@@ -251,19 +401,22 @@ def path_response_bodies(evidence: EvidenceResult, contacts: dict,
 def response_body(command: str, evidence: EvidenceResult, contacts: dict,
                   scope_name: str | None, budget: int = 139, *,
                   original_sender: str | None = None, request_tag: str | None = None,
-                  inbox_metrics: InboxMetrics | None = None) -> str:
+                  inbox_metrics: InboxMetrics | None = None, route_context=None) -> str:
     heads = {"ping": "🏁 PONG", "test": "🏁 TEST", "room": "ROOM"}
-    if command not in (*heads, "thanks", "help") or type(budget) is not int or not 1 <= budget <= 139:
+    if command not in (*heads, "path_hint", "thanks", "help", "clarify", "bot_report",
+                       "path_context") or type(budget) is not int or not 1 <= budget <= 139:
         raise ValueError("Invalid report request")
     # Scope remains part of the unchanged send profile, not the compact reply.
     suffix = f"\n🏠 {_label(MONITOR_QTH)}"
     if request_tag is not None:
         if (len(request_tag) != 16 or any(c not in "0123456789abcdef" for c in request_tag)):
             raise ValueError("Invalid request tag")
-        # Compatibility input only. Correlation belongs to private history;
-        # the sender reserves the actual packet identity before any RF attempt.
-    if command in ("thanks", "help"):
-        body = THANKS_REPLY if command == "thanks" else HELP_REPLY
+        # Private correlation also selects a stable courtesy variant, never
+        # an RF identity. The sender still reserves the actual packet identity.
+    if command in ("path_hint", "thanks", "help", "clarify", "bot_report", "path_context"):
+        body = {"path_hint": PATH_HINT_REPLY, "thanks": courtesy_reply(request_tag), "help": HELP_REPLY,
+                "clarify": CLARIFY_REPLY, "bot_report": BOT_REPORT_REPLY,
+                "path_context": PATH_CONTEXT_REPLY}[command]
         if len(body.encode("utf-8")) > budget:
             raise ValueError("Report byte budget exceeded")
         return body
@@ -295,11 +448,19 @@ def response_body(command: str, evidence: EvidenceResult, contacts: dict,
         metrics = f"\n📡 {copy.hops} 🐇 | SNR {copy.snr_db:+g} dB"
         head = prefix + sender + metrics
         hops = resolve_path(copy, contacts)
-        named = _path_labels(hops, contacts)
+        hops = infer_path(hops, contacts, route_context, MONITOR_POSITION)
+        # Display-only aliasing happens after identity/path selection. Collision
+        # suffixes are generated from captured bytes afterwards, never stripped.
+        hops, summary_contacts = _summary_site_names(hops, contacts)
+        named = _path_labels(hops, summary_contacts)
         hashes = [_short_hash(h.hash_hex) for h in hops]
         # Prefer named endpoints over additional hash-only positions. Both
         # display width and the enclosing UTF-8 packet budget must fit.
-        routes = list(dict.fromkeys(_route_choices(named) + _route_choices(hashes)))
+        # Preserve an inferred named endpoint even if both names together exceed
+        # the mobile line width. Never strip ≈ to make a hypothesis look exact.
+        mixed = (_named_route_choices(hops, [hashes[0], *named[1:]])
+                 + _named_route_choices(hops, [*named[:-1], hashes[-1]])) if any(h.status == "inferred" for h in hops) else []
+        routes = list(dict.fromkeys(_named_route_choices(hops, named) + mixed + _route_choices(hashes)))
         choices = [head + "\n📩 " + route + suffix for route in routes]
         # A visible ellipsis is an omitted route, never a direct-path claim.
         # Keep reception, path and QTH on their own lines at the packet limit.

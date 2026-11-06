@@ -23,6 +23,8 @@ class PublicDocumentationTests(unittest.TestCase):
                                ("Danke", "thanks"), ("thanks", "thanks"), ("danke 73", "thanks"),
                                ("@MeshHopper danke", "thanks"),
                                ("pfad", "path"), ("#PFAD", "path"),
+                               ("path", "path"), ("weg", "path"),
+                               ("way", "path"), ("route", "path"),
                                ("hilfe", "help"), ("help", "help"), ("dir", "help"),
                                ("#hilfe", "help"), ("#help", "help"), ("#dir", "help"),
                                ("bitte ping mich", None), ("pong", None),
@@ -65,6 +67,12 @@ class PublicDocumentationTests(unittest.TestCase):
                 path = (document.parent / relative).resolve()
                 self.assertTrue(path.is_relative_to(ROOT.resolve()))
                 self.assertTrue(path.is_file())
+
+    def test_public_docs_name_version_3_1_without_leading_zero(self):
+        for relative in ("README.md", "docs/public/DEVELOPMENT.de.md"):
+            content = (ROOT / relative).read_text(encoding="utf-8")
+            self.assertIn("Version 3.1", content)
+            self.assertNotIn("0.3.1", content)
 
     def test_readme_names_the_current_device_and_firmware(self):
         content = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -125,6 +133,8 @@ class PublicDocumentationTests(unittest.TestCase):
             self.assertIn("#hilfe", content)
             self.assertIn("#help", content)
             self.assertIn("#dir", content)
+            self.assertIn("RX-Weg", content)
+            self.assertIn("kein `1/1`", content)
 
     def test_offline_example_recognizes_new_help_and_path_without_sending(self):
         command = [sys.executable, "-I", "-S", "-B", str(ROOT / "examples/inspect_meshhopper_commands.py"),
