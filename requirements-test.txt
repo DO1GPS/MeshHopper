@@ -1,0 +1,2 @@
+# Synthetic core tests only; no SDK client or device connection.
+pycryptodome==3.23.0

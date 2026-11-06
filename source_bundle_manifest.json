@@ -1,0 +1,132 @@
+{
+  "project": "MeshHopper",
+  "publication_status": "licensed_development_draft",
+  "license": "MIT",
+  "files": [
+    {
+      "path": ".gitignore",
+      "sha256": "99c1f8c8ad37af0fc5aaf4a790b911608ffefcc61cf8d9436a0e1bb120ac5d52",
+      "bytes": 207
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "ee40f15782ff8cf4678567caf7e9bd363e3b522e687186f473e906691c58056b",
+      "bytes": 1063
+    },
+    {
+      "path": "README.md",
+      "sha256": "f799d5971cb4d6dc60559f920fb71c7626a18c34b29c0f6f396ea123175fdb0b",
+      "bytes": 13919
+    },
+    {
+      "path": "THIRD_PARTY_NOTICES.md",
+      "sha256": "b45cea6707830684e00c2b6ff909c8dbdff95c388813f91d7ac2adb1cc916e80",
+      "bytes": 2460
+    },
+    {
+      "path": "docs/public/DEVELOPMENT.de.md",
+      "sha256": "f8f74b63f841048c1a45c24a7acb92cf4dad0cefad8e17300e571e7ccaef70a3",
+      "bytes": 14591
+    },
+    {
+      "path": "examples/inspect_meshhopper_commands.py",
+      "sha256": "8141f0fc7bd6490666f972c42c389a50a3851ec625870ee870f9084af8f96c8f",
+      "bytes": 791
+    },
+    {
+      "path": "requirements-bot.txt",
+      "sha256": "411a2b93001d5fa1572b82f7c4d98a30cbdac37b5c487d0c80123533872a7ae8",
+      "bytes": 239
+    },
+    {
+      "path": "requirements-test.txt",
+      "sha256": "bcf331ba8f45e5d67cfa99c0b8c92356e349e24f8da647cb8ba33c187493150f",
+      "bytes": 86
+    },
+    {
+      "path": "services/bot/bot_commands.py",
+      "sha256": "294ceb5b118d62c35bf69ed8ac159b50a6553743fb62ab513b06c951c9d1a5f3",
+      "bytes": 2473
+    },
+    {
+      "path": "services/bot/bot_contact_catalog.py",
+      "sha256": "e50fa8fb3ffbd44de42dc63a518ba3e54c2b2f5caa3cce6b2a50d0dfb4a7c6a5",
+      "bytes": 5525
+    },
+    {
+      "path": "services/bot/bot_identity.py",
+      "sha256": "56dae4944839a1de2b80e25f79b825a67f9e93437aa33578f5a36cf03fc23334",
+      "bytes": 580
+    },
+    {
+      "path": "services/bot/bot_report.py",
+      "sha256": "91600e2404144737894873c663ad39c3551c5333f6b9ac38e6a4178ee1e79f32",
+      "bytes": 16270
+    },
+    {
+      "path": "services/bot/bot_timing.py",
+      "sha256": "eefeeada4ce57044172718e248deded1ad6509ec4a73ecf597bf91fc3cd7785d",
+      "bytes": 5601
+    },
+    {
+      "path": "services/bot/group_sender.py",
+      "sha256": "55a02563dbbdd0ad6d0f0bf543dcb37d0386b31fa95f55a548358a4d146df26f",
+      "bytes": 2897
+    },
+    {
+      "path": "services/bot/meshcore_room_bot.py",
+      "sha256": "bd641cfdc0c1b0eb989a053fdcd2a0314a182b894b5f6b95d8c997c07e0a115c",
+      "bytes": 45876
+    },
+    {
+      "path": "services/bot/raw_reply_history.py",
+      "sha256": "bacc578812908f3d1c7e9a09bb1ca5d00d0bfd52e0af660596eeb0abbf872a7b",
+      "bytes": 11651
+    },
+    {
+      "path": "services/bot/reception_evidence.py",
+      "sha256": "335404552381553337ef40d6d511c14c2efe7598db0e6368616350f03c1ba94d",
+      "bytes": 12642
+    },
+    {
+      "path": "services/bot/report_engine.py",
+      "sha256": "4a87cd8ecb5a0916928a8b88bc74e9eb32077de15fb842d5bc03775990d7508b",
+      "bytes": 13077
+    },
+    {
+      "path": "services/bot/report_profile.py",
+      "sha256": "364e8d6eea91354f7c63607b6b92000ff8d6327919f240aee95cb2a9bca2f63c",
+      "bytes": 3760
+    },
+    {
+      "path": "services/meshcore_command_admission.py",
+      "sha256": "818bc0bdd6ffb330f7d13a8fd754b8fa29a0708fe7d213dcada90bf70dd1df9a",
+      "bytes": 11089
+    },
+    {
+      "path": "services/meshcore_inbox_fetch.py",
+      "sha256": "0bdba470df3577f10c83f12c894d6b50c523c0f0760c21d7047427fcb9ce583f",
+      "bytes": 2160
+    },
+    {
+      "path": "services/meshcore_process_lock.py",
+      "sha256": "aaff2d47e82c0c4ff92deb37757a7340b2ae85aeb65cb54530e30560135ab97f",
+      "bytes": 2100
+    },
+    {
+      "path": "tests/test_bot_public_core.py",
+      "sha256": "6423eb1bfac0248acd0b4ebff4a107f4bb1989c4a9a7c903d1d327ddc63fd8bf",
+      "bytes": 30763
+    },
+    {
+      "path": "tests/test_public_docs.py",
+      "sha256": "ef24c062526bc0695f0cc2a89d3b707ac58e6b86b799e50e3581a48a87bf8b95",
+      "bytes": 8573
+    },
+    {
+      "path": "tests/test_public_profile.py",
+      "sha256": "616a3c4b23f5ccbc7cb0a59981a44436497c5f490de8d1ecfb01f5906d5bccdb",
+      "bytes": 12080
+    }
+  ]
+}
