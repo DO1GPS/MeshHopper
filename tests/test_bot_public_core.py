@@ -1,4 +1,4 @@
-"""Small, synthetic public-core gate; no SDK client, radio, database or socket.
+"""Small, synthetic public-core gate; no SDK client, radio or live socket.
 
 Test dependencies: Python 3.11/3.12, unittest (stdlib), pycryptodome==3.23.0.
 The full bot additionally needs meshcore==2.3.14 and its installed dependencies:
@@ -21,13 +21,16 @@ All keys, times, names and packets below are invented public fixture values.
 from __future__ import annotations
 
 import ast
+from contextlib import closing
 import hashlib
 import hmac
 import os
 from pathlib import Path
 import re
+import sqlite3
 import struct
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -45,6 +48,7 @@ import bot_identity
 import bot_report
 import bot_timing
 import group_sender
+import local_path_dispatch
 import reception_evidence
 import report_engine
 
@@ -64,6 +68,21 @@ OTHER_KEY = bytes(range(16, 32))
 REQUEST_TIME = 1_700_000_000
 RESPONSE_TIME = REQUEST_TIME + 1
 CONTACTS = {"a1" + "01" * 31: "North", "b2" + "02" * 31: "South"}
+
+
+def saved_local_request(path, body, *, channel=2, timestamp=REQUEST_TIME):
+    raw = bytes([3, 0, channel]) + timestamp.to_bytes(4, "little") + body.encode()
+    identity = "tx-" + hashlib.sha256(raw).hexdigest()
+    with closing(sqlite3.connect(path)) as db:
+        db.execute("CREATE TABLE outgoing (id TEXT PRIMARY KEY, transport_id TEXT, "
+                   "kind TEXT, channel_index INTEGER, contact_prefix TEXT, text TEXT, "
+                   "sender_timestamp INTEGER, outgoing INTEGER, send_result TEXT, "
+                   "delivery_proven INTEGER, source TEXT)")
+        db.execute("INSERT INTO outgoing VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                   (identity, identity, "channel", channel, None, body, timestamp, 1,
+                    "accepted", 0, "shared_transport"))
+        db.commit()
+    return identity
 
 
 def receive_frame(text="Demo: Ping", *, timestamp=REQUEST_TIME,
@@ -149,7 +168,11 @@ class PublicCoreTests(unittest.TestCase):
                  "@MeshHopper danke": "thanks", "@MeshHopper thanks 73": "thanks",
                  "pfad": "path", "#PFAD": "path", "path": "path", "weg": "path",
                  "way": "path", "route": "path", "hilfe": "help", "help": "help", "dir": "help",
-                 "#hilfe": "help", "#help": "help", "#dir": "help"}
+                 "#hilfe": "help", "#help": "help", "#dir": "help",
+                 "version": "version", "#VERSION": "version",
+                 "@MeshHopper version": "version", "@MeshHopper hallo": "greeting",
+                 "@MeshHopper wer bist du?": "identity",
+                 "@MeshHopper was kannst du?": "capabilities"}
         for text, command in cases.items():
             with self.subTest(text=text):
                 self.assertEqual(bot_commands.parse_command(text), command)
@@ -159,7 +182,8 @@ class PublicCoreTests(unittest.TestCase):
         for text in ("please ping me", "ping ping", "room test", "ping 1234567",
                      "PİNG", "ＰＩＮＧ", "ping\n test", "pi\0ng", "Demo: ping",
                      "##ping", "# ping", "ping #test", "Ping von 55566", "ping he",
-                     "danke dafür", "thanks 123", "#danke", None, 1):
+                     "danke dafür", "thanks 123", "#danke", "hallo", "moin",
+                     "version 3.1", "versionierung", "welche version", None, 1):
             with self.subTest(text=text):
                 self.assertIsNone(bot_commands.parse_command(text))
 
@@ -528,6 +552,60 @@ class PublicCoreTests(unittest.TestCase):
             self.assertIsNone(bot_commands.parse_command(reply.sender_alias + ": " + reply.body, wire=True))
         for text in ("help me", "hilfe ping", "# dir", "dir 1", "##help", "directory"):
             self.assertIsNone(bot_commands.parse_command(text))
+
+    def test_version_greetings_identity_and_capabilities_are_short_and_terminal(self):
+        evidence = reception_evidence.EvidenceResult("unavailable", "synthetic")
+        fixed = {
+            "version": bot_dialogue.VERSION_REPLY,
+            "identity": bot_dialogue.IDENTITY_REPLY,
+            "capabilities": bot_dialogue.CAPABILITIES_REPLY,
+        }
+        self.assertEqual(bot_identity.BOT_VERSION, "3.1")
+        self.assertIn("🔖 version", bot_report.HELP_REPLY)
+        for command, expected in fixed.items():
+            with self.subTest(command=command):
+                body = bot_report.response_body(command, evidence, {}, None,
+                                                request_tag="1" * 16)
+                self.assertEqual(body, expected)
+                self.assertLessEqual(len(body.encode()), bot_identity.BOT_BODY_BUDGET)
+                self.assertIsNone(bot_commands.parse_command("@MeshHopper " + body))
+        greeting = bot_report.response_body("greeting", evidence, {}, None,
+                                            request_tag="1" * 16)
+        self.assertEqual(greeting, bot_dialogue.greeting_reply("1" * 16))
+        self.assertIn(greeting, bot_dialogue.GREETING_REPLIES)
+        self.assertEqual(greeting, bot_dialogue.greeting_reply("1" * 16))
+        for body in (*bot_dialogue.GREETING_REPLIES, *fixed.values()):
+            self.assertIsNone(bot_commands.parse_command("OtherBot: @MeshHopper " + body,
+                                                         wire=True))
+
+    def test_marked_greetings_are_separate_but_unmarked_channel_greetings_stay_silent(self):
+        greetings = ("hallo", "hi", "hey", "hello", "moin", "moin moin", "servus",
+                     "gude", "ahoi", "guten Morgen", "guten Tag", "guten Abend")
+        for greeting in greetings:
+            with self.subTest(greeting=greeting):
+                self.assertEqual(bot_commands.parse_command("@MeshHopper " + greeting),
+                                 "greeting")
+                self.assertIsNone(bot_commands.parse_command(greeting))
+        self.assertEqual(bot_commands.parse_command("@MeshHopper welche Befehle gibt es?"),
+                         "help")
+        self.assertEqual(bot_commands.parse_command("@MeshHopper kannst du helfen?"),
+                         "help")
+        self.assertEqual(bot_commands.parse_command("@MeshHopper hallo Welt"), "clarify")
+
+    def test_local_dashboard_dispatch_accepts_only_complete_dialogue_commands(self):
+        accepted = ("hilfe", "@MeshHopper hallo", "version", "#version",
+                    "@MeshHopper wer bist du?", "@MeshHopper was kannst du?")
+        rejected = ("hallo", "moin", "version 3.1", "welche version", "help me")
+        for body in (*accepted, *rejected):
+            with self.subTest(body=body), tempfile.TemporaryDirectory() as directory:
+                store = Path(directory) / "outgoing.sqlite3"
+                identity = saved_local_request(store, body)
+                if body in accepted:
+                    request = local_path_dispatch.read_accepted_path(store, identity, {2})
+                    self.assertEqual((request.channel, request.text), (2, body))
+                else:
+                    with self.assertRaises(ValueError):
+                        local_path_dispatch.read_accepted_path(store, identity, {2})
 
 
 if __name__ == "__main__":

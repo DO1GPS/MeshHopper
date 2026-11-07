@@ -6,8 +6,9 @@ import re
 import unicodedata
 
 from reception_evidence import EvidenceResult, InboxMetrics, resolve_path
-from bot_dialogue import (CLARIFY_REPLY, BOT_REPORT_REPLY, PATH_HINT_REPLY,
-                          PATH_CONTEXT_REPLY, courtesy_reply)
+from bot_dialogue import (CAPABILITIES_REPLY, CLARIFY_REPLY, BOT_REPORT_REPLY,
+                          IDENTITY_REPLY, PATH_HINT_REPLY, PATH_CONTEXT_REPLY,
+                          VERSION_REPLY, courtesy_reply, greeting_reply)
 from path_inference import infer_path, locator_position
 
 
@@ -25,8 +26,8 @@ CALLSIGN = re.compile(r"(?<![A-Z0-9])(?:[A-Z]{1,2}|[0-9][A-Z])[0-9][A-Z]{1,4}(?!
 DIRECTIONS = {"nord": "N", "süd": "S", "sued": "S", "ost": "O", "west": "W",
               **{direction.casefold(): direction for direction in ("N", "S", "O", "W", "NO", "NW", "SO", "SW")}}
 THANKS_REPLY = "🤖 Gern geschehen ✌🏻, 73"
-HELP_REPLY = ("🤖 HILFE\n📡 ping/test\n🏠 room\n📩 pfad/weg/path/way/route\n"
-              "🙏 danke/73\n📖 hilfe/help/dir (#)")
+HELP_REPLY = ("🤖 HILFE\n📡 ping/test\n🏠 room\n📩 pfad/path/weg\n"
+              "🙏 danke/73\n📖 hilfe/help/dir (#)\n🔖 version")
 # Locally configured monitor QTH, never the sender's GPS or a private default.
 MONITOR_QTH = os.environ.get("MESHCORE_MONITOR_QTH", "nicht gesetzt")
 try:
@@ -403,7 +404,8 @@ def response_body(command: str, evidence: EvidenceResult, contacts: dict,
                   original_sender: str | None = None, request_tag: str | None = None,
                   inbox_metrics: InboxMetrics | None = None, route_context=None) -> str:
     heads = {"ping": "🏁 PONG", "test": "🏁 TEST", "room": "ROOM"}
-    if command not in (*heads, "path_hint", "thanks", "help", "clarify", "bot_report",
+    if command not in (*heads, "path_hint", "thanks", "help", "greeting", "version",
+                       "identity", "capabilities", "clarify", "bot_report",
                        "path_context") or type(budget) is not int or not 1 <= budget <= 139:
         raise ValueError("Invalid report request")
     # Scope remains part of the unchanged send profile, not the compact reply.
@@ -413,10 +415,13 @@ def response_body(command: str, evidence: EvidenceResult, contacts: dict,
             raise ValueError("Invalid request tag")
         # Private correlation also selects a stable courtesy variant, never
         # an RF identity. The sender still reserves the actual packet identity.
-    if command in ("path_hint", "thanks", "help", "clarify", "bot_report", "path_context"):
-        body = {"path_hint": PATH_HINT_REPLY, "thanks": courtesy_reply(request_tag), "help": HELP_REPLY,
-                "clarify": CLARIFY_REPLY, "bot_report": BOT_REPORT_REPLY,
-                "path_context": PATH_CONTEXT_REPLY}[command]
+    if command in ("path_hint", "thanks", "help", "greeting", "version", "identity",
+                   "capabilities", "clarify", "bot_report", "path_context"):
+        body = {"path_hint": PATH_HINT_REPLY, "thanks": courtesy_reply(request_tag),
+                "help": HELP_REPLY, "greeting": greeting_reply(request_tag),
+                "version": VERSION_REPLY, "identity": IDENTITY_REPLY,
+                "capabilities": CAPABILITIES_REPLY, "clarify": CLARIFY_REPLY,
+                "bot_report": BOT_REPORT_REPLY, "path_context": PATH_CONTEXT_REPLY}[command]
         if len(body.encode("utf-8")) > budget:
             raise ValueError("Report byte budget exceeded")
         return body

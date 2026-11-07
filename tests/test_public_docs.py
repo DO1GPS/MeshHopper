@@ -1,5 +1,6 @@
 """Public documentation examples: local files and pure parser, never radio."""
 import ast
+import json
 import os
 from pathlib import Path
 import re
@@ -10,6 +11,7 @@ import unittest
 ROOT = Path(os.environ.get("MESHCORE_PUBLIC_ROOT", Path(__file__).resolve().parents[1])).resolve()
 sys.path.insert(0, str(ROOT / "services" / "bot"))
 from bot_commands import parse_command  # noqa: E402
+from bot_identity import BOT_VERSION  # noqa: E402
 
 
 class PublicDocumentationTests(unittest.TestCase):
@@ -27,9 +29,14 @@ class PublicDocumentationTests(unittest.TestCase):
                                ("way", "path"), ("route", "path"),
                                ("hilfe", "help"), ("help", "help"), ("dir", "help"),
                                ("#hilfe", "help"), ("#help", "help"), ("#dir", "help"),
+                               ("version", "version"), ("#version", "version"),
+                               ("@MeshHopper hallo", "greeting"),
+                               ("@MeshHopper wer bist du?", "identity"),
+                               ("@MeshHopper was kannst du?", "capabilities"),
                                ("bitte ping mich", None), ("pong", None),
                                ("room test", None), ("ping ping", None),
                                ("ping he", None), ("Ping von 55566", None),
+                               ("hallo", None), ("version 3.1", None),
                                ("🤖 Gern geschehen ✌🏻, 73", None)):
             with self.subTest(text=text):
                 self.assertEqual(parse_command(text), expected)
@@ -73,6 +80,9 @@ class PublicDocumentationTests(unittest.TestCase):
             content = (ROOT / relative).read_text(encoding="utf-8")
             self.assertIn("Version 3.1", content)
             self.assertNotIn("0.3.1", content)
+        manifest = json.loads((ROOT / "source_bundle_manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(BOT_VERSION, "3.1")
+        self.assertEqual(manifest["version"], BOT_VERSION)
 
     def test_readme_names_the_current_device_and_firmware(self):
         content = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -143,6 +153,18 @@ class PublicDocumentationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.splitlines(), ["'#PFAD' -> PFAD", "'Hilfe' -> HELP",
                          "'#help' -> HELP", "'dir' -> HELP", "'help me' -> keine Antwort"])
+
+    def test_offline_example_recognizes_version_and_directed_dialogue_without_sending(self):
+        command = [sys.executable, "-I", "-S", "-B",
+                   str(ROOT / "examples/inspect_meshhopper_commands.py"),
+                   "version", "@MeshHopper hallo", "@MeshHopper wer bist du?",
+                   "@MeshHopper was kannst du?"]
+        result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), ["'version' -> VERSION",
+                         "'@MeshHopper hallo' -> GRUSS",
+                         "'@MeshHopper wer bist du?' -> IDENTITAET",
+                         "'@MeshHopper was kannst du?' -> FUNKTIONEN"])
 
     def test_public_docs_explain_local_qth_and_thanks(self):
         documents = [ROOT / "README.md", ROOT / "docs/public/DEVELOPMENT.de.md"]

@@ -107,6 +107,19 @@ nicht stattdessen ausgegeben.
 `help`. Sie liefern eine feste Übersicht, keine Empfangsmessung.
 Für `dir` wird kein Verzeichnis gelesen und kein Systembefehl ausgeführt.
 
+`version` und `#version` liefern den Botstand aus der gemeinsamen Konstante
+`BOT_VERSION`; `@MeshHopper version` verwendet dieselbe Familie. Nur der
+vollständige Befehl gilt: `version 3.1`, `versionierung` und Gesprächssätze
+bleiben ohne Versionsantwort. Direkt an `@MeshHopper` gerichtete Grüße wie
+`hallo`, `moin`, `servus`, `gude` oder `ahoi` haben eine eigene kurze
+Antwort. Unmarkierte Grüße im Kanal bleiben still. Die direkten Fragen
+`wer bist du?` und `was kannst du?` liefern eigene Kurzantworten; echte
+Hilfefragen wie `welche Befehle gibt es?` bleiben bei der Hilfe.
+
+Alle Dialogantworten sind terminal: Ein fremdes Rückecho desselben Textes
+löst keine zweite Antwort aus. Varianten werden aus der unveränderten
+Anfragekennung bestimmt, nicht zufällig oder über einen globalen Zähler.
+
 Für eine Textänderung ist `bot_report.py` der Einstieg. Der Test
 `test_ping_test_room_real_packet_roundtrip_hare_snr_no_rssi_or_hex_line`
 zeigt das vollständige erwartete Format und kontrolliert auch das tatsächlich
@@ -250,6 +263,9 @@ einer Familie `help`, die den vorhandenen einmaligen Sendeweg verwendet.
 Ein Emoji und ein Pfeil brauchen mehrere UTF-8-Bytes; auch die Hilfe muss
 zusammen mit dem Anzeigenamen ins bestehende Paketlimit passen. Die
 Pakettests prüfen außerdem, dass die Antwort keinen neuen Befehl auslöst.
+Die kompakte Hilfe nennt `version`. Für die Wegabfrage zeigt sie nur
+`pfad/path/weg`; die weiterhin gültigen Aliase `way` und `route` bleiben
+in der ausführlichen Befehlsbeschreibung dokumentiert.
 
 ## Betriebsprofil und bekannte Einschränkungen
 

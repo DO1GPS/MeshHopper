@@ -4,6 +4,7 @@ Display aliases are not new cryptographic station identities. The public
 draft contains no operator-specific station names or location defaults.
 """
 BOT_NAME = "🐇 MeshHopper"
+BOT_VERSION = "3.1"
 LEGACY_BOT_NAME = "MeshHopper Monitor"
 KNOWN_BOT_ALIASES = frozenset({LEGACY_BOT_NAME, "MeshHopper", BOT_NAME})
 

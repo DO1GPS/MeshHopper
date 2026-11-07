@@ -1,7 +1,7 @@
-"""Private local path-command notifications, verified against accepted TX history.
+"""Private local command notifications, verified against accepted TX history.
 
 No SDK/device access, RX injection, polling, replay or new path inference.
-Only an accepted path command or bounded typo hint can enter the live handler.
+Only an accepted bounded path or dialogue command can enter the live handler.
 """
 from contextlib import closing
 from dataclasses import dataclass
@@ -41,7 +41,8 @@ def read_accepted_path(path, identity, channels):
             or channel not in channels or contact is not None or outgoing != 1
             or result != 'accepted' or delivery != 0 or source != 'shared_transport'
             or not isinstance(text,str) or type(stamp) is not int or not 0<=stamp<=0xffffffff
-            or parse_command(text) not in {'path','path_hint'}):
+            or parse_command(text) not in {'path','path_hint','help','greeting','version',
+                                           'identity','capabilities'}):
         raise ValueError('local_path_tx_not_accepted_path')
     raw=bytes([3,0,channel])+stamp.to_bytes(4,'little')+text.encode('utf-8','strict')
     if 'tx-'+hashlib.sha256(raw).hexdigest() != identity:

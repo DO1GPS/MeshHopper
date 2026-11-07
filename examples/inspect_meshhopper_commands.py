@@ -14,7 +14,10 @@ def main(arguments=None):
     for text in messages or EXAMPLES:
         command = parse_command(text)
         result = {"ping": "PONG", "test": "TEST", "room": "ROOM",
-                  "thanks": "THANKS", "path": "PFAD", "help": "HELP"}.get(command, "keine Antwort")
+                  "thanks": "THANKS", "path": "PFAD", "help": "HELP",
+                  "greeting": "GRUSS", "version": "VERSION",
+                  "identity": "IDENTITAET", "capabilities": "FUNKTIONEN"}.get(
+                      command, "keine Antwort")
         print(f"{text!r} -> {result}")
     return 0
 

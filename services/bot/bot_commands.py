@@ -7,7 +7,8 @@ from bot_dialogue import TERMINAL_REPLY_BODIES
 
 
 COMMAND_FAMILIES = frozenset({"ping", "test", "room", "path", "path_hint", "thanks",
-                              "help", "clarify", "bot_report", "path_context"})
+                              "help", "greeting", "version", "identity", "capabilities",
+                              "clarify", "bot_report", "path_context"})
 
 
 EDGE_PADDING = "\x00 \t\r\n.,!?;:"
@@ -66,12 +67,18 @@ PATH = re.compile(r"(?:#|/)?(?:pfad|path|weg|way|route)", re.IGNORECASE | re.ASC
 PATH_TYPO = re.compile(r"(?:#|/)?(?:pfard|pafd|pfaad|fad|fahrt|paht|phad)",
                        re.IGNORECASE | re.ASCII)
 HELP = re.compile(r"#?(?:hilfe|help|dir)", re.IGNORECASE | re.ASCII)
+VERSION = re.compile(r"#?version", re.IGNORECASE | re.ASCII)
 # Additional intents require an exact own mention and a complete known body.
 # Unknown prose gets a short clarification, never the entire help response.
+DIRECTED_GREETING = re.compile(
+    r"(?:moin(?:[ \t]+moin)?|hallo|hi|hey|hello|servus|gude|ahoi|"
+    r"guten[ \t]+(?:morgen|tag|abend))",
+    re.IGNORECASE | re.ASCII,
+)
+DIRECTED_IDENTITY = re.compile(r"wer[ \t]+bist[ \t]+du", re.IGNORECASE | re.ASCII)
+DIRECTED_CAPABILITIES = re.compile(r"was[ \t]+kannst[ \t]+du", re.IGNORECASE | re.ASCII)
 DIRECTED_HELP = re.compile(
-    r"(?:moin(?:[ \t]+moin)?|hallo|hi|hey|hello|servus|gude|"
-    r"guten[ \t]+(?:morgen|tag|abend)|was[ \t]+kannst[ \t]+du|"
-    r"welche[ \t]+befehle[ \t]+gibt[ \t]+es|kannst[ \t]+du[ \t]+helfen)",
+    r"(?:welche[ \t]+befehle[ \t]+gibt[ \t]+es|kannst[ \t]+du[ \t]+helfen)",
     re.IGNORECASE | re.ASCII,
 )
 # Recognizes a report format, NOT an authenticated bot or station identity.
@@ -162,6 +169,8 @@ def _body_command(text: str) -> str | None:
         return "path_hint"
     if HELP.fullmatch(body):
         return "help"
+    if VERSION.fullmatch(body):
+        return "version"
     match = COMMAND.fullmatch(body)
     if match is None:
         if _control_inside(text):
@@ -207,6 +216,12 @@ def parse_command(text: object, *, wire: bool = False) -> str | None:
             return "path_context"
         if DIRECTED_ACK.fullmatch(body.strip(" \t")):
             return "thanks"
+        if DIRECTED_GREETING.fullmatch(body.strip(EDGE_PADDING)):
+            return "greeting"
+        if DIRECTED_IDENTITY.fullmatch(body.strip(EDGE_PADDING)):
+            return "identity"
+        if DIRECTED_CAPABILITIES.fullmatch(body.strip(EDGE_PADDING)):
+            return "capabilities"
         if DIRECTED_HELP.fullmatch(body.strip(EDGE_PADDING)):
             return "help"
         return "bot_report" if DIRECTED_REPORT.fullmatch(body.strip(" \t")) else "clarify"

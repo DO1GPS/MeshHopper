@@ -56,7 +56,8 @@ from bot_identity import BOT_NAME  # noqa: E402
 from bot_commands import parse_command  # noqa: E402
 from bot_runtime_status import RuntimeStatusWriter, COMMAND_FAMILIES  # noqa: E402
 from bot_report import PATH_HINT_REPLY, THANKS_REPLY, HELP_REPLY, CLARIFY_REPLY, BOT_REPORT_REPLY  # noqa: E402
-from bot_dialogue import PATH_CONTEXT_REPLY  # noqa: E402
+from bot_dialogue import (CAPABILITIES_REPLY, GREETING_REPLIES, IDENTITY_REPLY,
+                          PATH_CONTEXT_REPLY, VERSION_REPLY)  # noqa: E402
 from reception_evidence import channel_message_metrics  # noqa: E402
 from bot_timing import begin_request, timed_handler, span as timing_span, measured_send_lock, new_epoch  # noqa: E402
 from local_path_dispatch import LocalPathServer, read_accepted_path  # noqa: E402
@@ -70,6 +71,10 @@ COMMAND_REPLIES = {
     "path_hint": f"{BOT_PREFIX} {PATH_HINT_REPLY}",
     "thanks": f"{BOT_PREFIX} {THANKS_REPLY}",
     "help": f"{BOT_PREFIX} {HELP_REPLY}",
+    "greeting": f"{BOT_PREFIX} {GREETING_REPLIES[0]}",
+    "version": f"{BOT_PREFIX} {VERSION_REPLY}",
+    "identity": f"{BOT_PREFIX} {IDENTITY_REPLY}",
+    "capabilities": f"{BOT_PREFIX} {CAPABILITIES_REPLY}",
     "clarify": f"{BOT_PREFIX} {CLARIFY_REPLY}",
     "bot_report": f"{BOT_PREFIX} {BOT_REPORT_REPLY}",
     "path_context": f"{BOT_PREFIX} {PATH_CONTEXT_REPLY}",

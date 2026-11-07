@@ -15,7 +15,9 @@ und letzten zwei Repeater, bei längeren Namen nur Anfang und Ende.
 `…` kennzeichnet ausgelassene Zwischenstationen. Wer die ganze erfasste
 Kette sehen möchte, sendet `pfad`, `path`, `weg`, `way` oder `route`.
 Eine kurze Befehlsübersicht gibt es mit
-`hilfe`, `help` oder `dir`.
+`hilfe`, `help` oder `dir`. `version` und `#version` nennen den aktuellen
+Botstand. Direkt angesprochen beantwortet MeshHopper außerdem kurze Grüße,
+`wer bist du?` und `was kannst du?`.
 
 Eine `ping`-Anfrage wird mit `PONG` beantwortet, `test` mit `TEST`.
 `room` zeigt den aktuellen Kanal und die weiteren Kanäle, in denen der
@@ -69,6 +71,10 @@ in `bot-replies.sqlite3`.
 | `pfad`, `path`, `weg`, `way`, `route` (auch mit `#`) | Vollständiger RX-Weg des letzten angenommenen Ping/Tests im selben Kanal, bei Bedarf in mehreren Teilen |
 | `hilfe`, `help`, `dir` | Kurze Befehlsübersicht in einer Nachricht |
 | `#hilfe`, `#help`, `#dir` | Dieselbe Befehlsübersicht |
+| `version`, `#version` | Aktueller Botstand |
+| `@MeshHopper hallo` | Kurze Begrüßung; gilt auch für `hi`, `hey`, `moin`, `servus`, `gude`, `ahoi` und Tagesgrüße |
+| `@MeshHopper wer bist du?` | Kurze Identitätsauskunft |
+| `@MeshHopper was kannst du?` | Kurze Funktionsauskunft |
 
 Die Erkennung unterscheidet nicht zwischen Groß- und Kleinschreibung.
 Ein einzelnes `#` darf direkt vor dem ersten Befehlswort stehen, auch bei
@@ -80,6 +86,12 @@ Die Zahl darf ein bis sechs Ziffern
 Sie kennzeichnet keine Anzahl von Wiederholungen. Nur vollständige
 Befehlsformen lösen eine Antwort aus; Gesprächssätze wie „bitte ping mich“
 und fremde `PONG`-Antworten bleiben ohne Reaktion.
+
+`version` und `#version` sind vollständige Befehle. Texte wie
+`version 3.1`, `versionierung` oder `welche version` lösen keine
+Versionsantwort aus. Grüße reagieren nur auf eine vollständige direkte
+Ansprache des Bots; ein allgemeines `hallo` im Kanal bleibt still. So
+entsteht kein Begrüßungsdialog zwischen mehreren Bots.
 
 Die Dankantwort hat eigene, vollständige Befehlsformen: `danke`, `thanks`
 und jeweils der Zusatz `73`; auch `@MeshHopper danke` ist möglich.
@@ -243,15 +255,18 @@ kurze Übersicht in einer Nachricht:
 
 ```text
 🤖 HILFE
-📡 ping · test
+📡 ping/test
 🏠 room
-📩 pfad → Weg
-🙏 danke → 73
-📖 hilfe/help/dir (auch "#")
+📩 pfad/path/weg
+🙏 danke/73
+📖 hilfe/help/dir (#)
+🔖 version
 ```
 
 Groß- und Kleinschreibung sind egal. `dir` ist hier nur ein Alias
 (alternative Schreibweise) für Hilfe, kein Zugriff auf Dateien.
+Die Hilfe nennt die drei gebräuchlichsten Wegbefehle; `way` und `route`
+bleiben als weitere vollständige Aliase gültig.
 Gesprächssätze wie `help me`, Zusätze wie `dir 1` und `# dir` lösen
 keine Antwort aus. Die Hilfe benötigt keine Empfangsmesswerte.
 

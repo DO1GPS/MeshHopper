@@ -16,8 +16,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "aba25d369c49068423dd7f3c92a481ddd8d457be7c77eac54734c167e90fd8cc",
-      "bytes": 15351
+      "sha256": "604758e822954c5d3a15ddc0435e0e0828d0f1921f7fe3a894386e3f5c7ca009",
+      "bytes": 16254
     },
     {
       "path": "THIRD_PARTY_NOTICES.md",
@@ -26,13 +26,13 @@
     },
     {
       "path": "docs/public/DEVELOPMENT.de.md",
-      "sha256": "b369afc0cf10390ddd4fb9b189ec71aa93c7161d590735846494db77f2d9c872",
-      "bytes": 15388
+      "sha256": "e47f11271c626d4854ee1d2d4e6baeae376932be8cf88d51c090e2965c2ec2f9",
+      "bytes": 16398
     },
     {
       "path": "examples/inspect_meshhopper_commands.py",
-      "sha256": "8141f0fc7bd6490666f972c42c389a50a3851ec625870ee870f9084af8f96c8f",
-      "bytes": 791
+      "sha256": "bf05faaac924726c3a0f2f9d994adabd8cf146a5342f95a2cd1f31b2038273d8",
+      "bytes": 949
     },
     {
       "path": "requirements-bot.txt",
@@ -46,8 +46,8 @@
     },
     {
       "path": "services/bot/bot_commands.py",
-      "sha256": "8b2ca14730b3739001d2c15c6d338989b47661ef74b39edd17dbf0b98e9168ee",
-      "bytes": 9324
+      "sha256": "2e79c33b06e43a826e0bd3e95fd7656ac020c51fb6b4362bed616c685a1b6a18",
+      "bytes": 10040
     },
     {
       "path": "services/bot/bot_contact_catalog.py",
@@ -56,18 +56,18 @@
     },
     {
       "path": "services/bot/bot_dialogue.py",
-      "sha256": "69ca1ac10071cc96fee52ebff97a37ccfad5b91fc1b5234cfeda467889edd5aa",
-      "bytes": 1730
+      "sha256": "e0c5a44d4c0632aed5de8a7602072ed5cba35503ce41d19e0d2dd1830fc81891",
+      "bytes": 2936
     },
     {
       "path": "services/bot/bot_identity.py",
-      "sha256": "56dae4944839a1de2b80e25f79b825a67f9e93437aa33578f5a36cf03fc23334",
-      "bytes": 580
+      "sha256": "3232e8b7799cfa73899d4cc62c7c78da58008f9357245028d7d9b71c996adc3e",
+      "bytes": 600
     },
     {
       "path": "services/bot/bot_report.py",
-      "sha256": "05f67486debdcfe314ea0e3b8ed835d2929e2bc678a6f174d90b5d1a1ad4cfd7",
-      "bytes": 24870
+      "sha256": "f329a9a0dbbf81e715f8e5b2ad8c762faa26a9e92d474c269ba9e344555ab26e",
+      "bytes": 25274
     },
     {
       "path": "services/bot/bot_runtime_status.py",
@@ -86,13 +86,13 @@
     },
     {
       "path": "services/bot/local_path_dispatch.py",
-      "sha256": "b68f0c8e5ab2697bda2d890760c5c1229d738af766d74e5a49e9ec6c16a913a2",
-      "bytes": 6401
+      "sha256": "90df7f8bc9cfd295b2f4befca7396f704841f36d17b56b2923df0369fc209bb5",
+      "bytes": 6493
     },
     {
       "path": "services/bot/meshcore_room_bot.py",
-      "sha256": "2cfab19618abdfe1978eeba1f6bfa308a3a47ab48c72011767ceee0f7b0144e8",
-      "bytes": 53027
+      "sha256": "18850b93a9ef5f495ed08d17d41267015718a4fc482a0de31aee70387c313ff5",
+      "bytes": 53335
     },
     {
       "path": "services/bot/path_inference.py",
@@ -136,13 +136,13 @@
     },
     {
       "path": "tests/test_bot_public_core.py",
-      "sha256": "b66f847d3d1f575dfee5a70309bce7ddcd568a71a9ad6a33a78c49e7c9034147",
-      "bytes": 32463
+      "sha256": "8410f85f772bf9cab546d2487d73c057834fbbcbf5468afbf7c6900e21f10b4f",
+      "bytes": 37087
     },
     {
       "path": "tests/test_public_docs.py",
-      "sha256": "eff183df8a3ff6d361b26fa597f7a5807cc92283649c66bf918d68d71331c13e",
-      "bytes": 9108
+      "sha256": "b52208cfb5d091b69f355d01939e150b9c9380d0620a64ba889d6f5a77cfe099",
+      "bytes": 10523
     },
     {
       "path": "tests/test_public_profile.py",
