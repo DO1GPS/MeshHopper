@@ -165,7 +165,11 @@ class PublicCoreTests(unittest.TestCase):
                  "#ping": "ping", "#reping": "ping", "#test": "test", "#retest": "test",
                  "#room": "room", "#ping test": "test", "#test ping 12": "test",
                  "Danke": "thanks", "thanks": "thanks", "danke 73": "thanks",
+                 "73": "thanks", "73!": "thanks", "73.": "thanks",
+                 "73 ✌": "thanks", "73 ✌️": "thanks", "73 ✌🏻": "thanks",
+                 "73 ✌🏻👍🙏": "thanks",
                  "@MeshHopper danke": "thanks", "@MeshHopper thanks 73": "thanks",
+                 "@MeshHopper 73 ✌🏻": "thanks",
                  "pfad": "path", "#PFAD": "path", "path": "path", "weg": "path",
                  "way": "path", "route": "path", "hilfe": "help", "help": "help", "dir": "help",
                  "#hilfe": "help", "#help": "help", "#dir": "help",
@@ -183,9 +187,46 @@ class PublicCoreTests(unittest.TestCase):
                      "PİNG", "ＰＩＮＧ", "ping\n test", "pi\0ng", "Demo: ping",
                      "##ping", "# ping", "ping #test", "Ping von 55566", "ping he",
                      "danke dafür", "thanks 123", "#danke", "hallo", "moin",
+                     "173", "073", "730", "73 km", "73 und danke", "73 👎",
+                     "73 🐇", "73 🤖", "73 ✌🏻👍🙏🎉", "73\n✌🏻", "73\u00a0✌🏻",
+                     "73\u200b✌🏻",
                      "version 3.1", "versionierung", "welche version", None, 1):
             with self.subTest(text=text):
                 self.assertIsNone(bot_commands.parse_command(text))
+
+    def test_extended_thanks_forms_are_exact_complete_acknowledgements(self):
+        forms = ("danke vielmals", "danke sehr", "vielen lieben Dank",
+                 "herzlichen Dank", "lieben Dank", "tausend Dank",
+                 "vielen Dank auch", "thanks a lot", "many thanks")
+        for form in forms:
+            with self.subTest(form=form):
+                self.assertEqual(bot_commands.parse_command(form), "thanks")
+                self.assertEqual(bot_commands.parse_command("@MeshHopper " + form), "thanks")
+                self.assertEqual(bot_commands.parse_command("Demo: " + form, wire=True), "thanks")
+        for invalid in ("danke vielmals für alles", "danke sehr gerne",
+                        "vielen lieben Dank an alle", "vielen lieben Dank auch",
+                        "herzlichen Dankeschön",
+                        "lieben Dank dafür", "tausend Dankeschön",
+                        "vielen Dank auch dir", "thanks a lot more", "many thanks all"):
+            with self.subTest(invalid=invalid):
+                self.assertIsNone(bot_commands.parse_command(invalid))
+
+    def test_extended_greetings_require_an_exact_own_mention(self):
+        forms = ("moinsen", "tach", "hallöchen", "grüß dich", "grüss dich",
+                 "gruess dich", "grüezi", "salut", "hey ho", "hi there")
+        for form in forms:
+            with self.subTest(form=form):
+                self.assertIsNone(bot_commands.parse_command(form))
+                self.assertEqual(bot_commands.parse_command("@MeshHopper " + form), "greeting")
+                self.assertEqual(bot_commands.parse_command(
+                    "Demo: @MeshHopper " + form, wire=True), "greeting")
+        for invalid in ("moinsen zusammen", "tachchen", "hallöchen zusammen",
+                        "grüß euch", "gruss dich", "grüezi mitenand", "salut! salut",
+                        "hey ho zusammen", "hi there bot"):
+            with self.subTest(invalid=invalid):
+                self.assertIsNone(bot_commands.parse_command(invalid))
+                self.assertNotEqual(bot_commands.parse_command(
+                    "@MeshHopper " + invalid), "greeting")
 
     def test_ping_test_room_real_packet_roundtrip_hare_snr_no_rssi_or_hex_line(self):
         for command, head in (("ping", "PONG"), ("test", "TEST"), ("room", "ROOM")):
@@ -279,7 +320,8 @@ class PublicCoreTests(unittest.TestCase):
         self.assert_public_body(reply, "TEST")
 
     def test_thanks_packet_has_the_exact_reply_and_does_not_trigger_another_reply(self):
-        for request in ("Danke", "thanks", "danke 73", "@MeshHopper thanks 73"):
+        for request in ("Danke", "thanks", "danke 73", "73", "73 ✌🏻",
+                        "@MeshHopper thanks 73", "@MeshHopper 73 ✌🏻"):
             with self.subTest(request=request):
                 engine = self.engine()
                 text = "Demo: " + request
@@ -295,7 +337,8 @@ class PublicCoreTests(unittest.TestCase):
 
     def test_known_bot_thanks_and_other_reply_bodies_do_not_start_a_loop(self):
         for alias in bot_identity.KNOWN_BOT_ALIASES:
-            for body in ("danke", "thanks 73", *bot_dialogue.COURTESY_REPLIES, "PONG @Demo"):
+            for body in ("danke", "thanks 73", "73", "73 ✌🏻",
+                         *bot_dialogue.COURTESY_REPLIES, "PONG @Demo"):
                 with self.subTest(alias=alias, body=body):
                     self.assertIsNone(bot_commands.parse_command(alias + ": " + body, wire=True))
         for body in ("PONG @Demo", "TEST @Demo", "ROOM @Demo", *bot_dialogue.COURTESY_REPLIES):

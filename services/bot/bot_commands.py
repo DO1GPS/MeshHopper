@@ -44,8 +44,12 @@ DIRECTED = re.compile(
     re.IGNORECASE | re.ASCII,
 )
 THANKS = re.compile(
-    r"(?:danke|thanks|vielen[ \t]+dank|besten[ \t]+dank|dankesch[öÖ]n|"
-    r"danke[ \t]+sch[öÖ]n|danke[ \t]+dir|danke[ \t]+euch|merci|thx|thank[ \t]+you)"
+    r"(?:danke|thanks|danke[ \t]+vielmals|danke[ \t]+sehr|"
+    r"vielen[ \t]+dank|vielen[ \t]+lieben[ \t]+dank|vielen[ \t]+dank[ \t]+auch|"
+    r"herzlichen[ \t]+dank|"
+    r"lieben[ \t]+dank|tausend[ \t]+dank|besten[ \t]+dank|dankesch[öÖ]n|"
+    r"danke[ \t]+sch[öÖ]n|danke[ \t]+dir|danke[ \t]+euch|merci|thx|"
+    r"thank[ \t]+you|thanks[ \t]+a[ \t]+lot|many[ \t]+thanks)"
     r"(?:[ \t]+73)?[.!?]?",
     re.IGNORECASE | re.ASCII,
 )
@@ -56,6 +60,7 @@ _POSITIVE_EMOJI = (
 )
 _ACK_SEQUENCE = rf"{_POSITIVE_EMOJI}(?:[ \t]*{_POSITIVE_EMOJI}){{0,2}}"
 THANKS_EMOJI = re.compile(rf"(?:{THANKS.pattern})[ \t]*{_ACK_SEQUENCE}[.!]?", THANKS.flags)
+SEVENTY_THREE = re.compile(rf"73(?:[ \t]*{_ACK_SEQUENCE})?[.!]?", THANKS.flags)
 DIRECTED_ACK = re.compile(
     rf"(?:{_ACK_SEQUENCE}|(?:ok|okay|alles[ \t]+klar|passt|super|prima|perfekt|top)"
     rf"(?:[ \t]+{_ACK_SEQUENCE})?)[.!]?",
@@ -71,7 +76,9 @@ VERSION = re.compile(r"#?version", re.IGNORECASE | re.ASCII)
 # Additional intents require an exact own mention and a complete known body.
 # Unknown prose gets a short clarification, never the entire help response.
 DIRECTED_GREETING = re.compile(
-    r"(?:moin(?:[ \t]+moin)?|hallo|hi|hey|hello|servus|gude|ahoi|"
+    r"(?:moin(?:[ \t]+moin)?|moinsen|hallo|hall[öÖ]chen|hi|hi[ \t]+there|"
+    r"hey|hey[ \t]+ho|hello|tach|servus|gude|ahoi|"
+    r"gr(?:[üÜ][ß]|[üÜ]ss|uess)[ \t]+dich|gr[üÜ]ezi|salut|"
     r"guten[ \t]+(?:morgen|tag|abend))",
     re.IGNORECASE | re.ASCII,
 )
@@ -158,7 +165,9 @@ def _directed_path_context(text: str) -> bool:
 
 
 def _body_command(text: str) -> str | None:
-    if THANKS.fullmatch(text.strip(" \t")) or THANKS_EMOJI.fullmatch(text.strip(" \t")):
+    stripped = text.strip(" \t")
+    if (THANKS.fullmatch(stripped) or THANKS_EMOJI.fullmatch(stripped)
+            or SEVENTY_THREE.fullmatch(stripped)):
         return "thanks"
     body = text.strip(EDGE_PADDING)
     if _control_inside(body):
